@@ -1,0 +1,113 @@
+/** Citadel — Landing/Home page renderer. */
+
+export function renderHome(container: HTMLElement): void {
+  container.innerHTML = `
+    <div class="home">
+      <!-- Navbar -->
+      <nav class="home-nav">
+        <div class="home-nav__logo">Citadel</div>
+        <ul class="home-nav__links">
+          <li><a href="#features" class="home-nav__link">Features</a></li>
+          <li><a href="#how-it-works" class="home-nav__link">How It Works</a></li>
+          <li><a href="#/dashboard" class="home-nav__cta">Dashboard →</a></li>
+        </ul>
+      </nav>
+
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero__badge">AI-Powered Safety System</div>
+        <h1 class="hero__title">AI-Powered Traffic<br>Safety Analytics</h1>
+        <p class="hero__subtitle">
+          Detect accidents, violations, and safety threats in real-time
+          using advanced computer vision and the DETR transformer model.
+        </p>
+        <a href="#/dashboard" class="hero__cta">Launch Dashboard →</a>
+      </section>
+
+      <!-- Features -->
+      <section class="features" id="features">
+        <div class="features__header">
+          <h2 class="features__title">What We Detect</h2>
+          <p class="features__subtitle">Advanced AI detection capabilities for traffic safety</p>
+        </div>
+        <div class="features__grid">
+          <div class="feature-card">
+            <div class="feature-card__icon"></div>
+            <h3 class="feature-card__title">Accident Detection</h3>
+            <p class="feature-card__desc">
+              DETR transformer model identifies collisions and classifies severity in real-time.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card__icon"></div>
+            <h3 class="feature-card__title">Vehicle Detection</h3>
+            <p class="feature-card__desc">
+              Precise vehicle localization with bounding boxes and confidence scoring.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card__icon"></div>
+            <h3 class="feature-card__title">Analytics Dashboard</h3>
+            <p class="feature-card__desc">
+              Real-time statistics, event timeline, severity breakdown charts, and detailed event logs.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card__icon"></div>
+            <h3 class="feature-card__title">Digital Tickets</h3>
+            <p class="feature-card__desc">
+              Automated violation ticket generation with evidence snapshots and status tracking.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats -->
+      <section class="stats-section">
+        <div class="stat-item">
+          <div class="stat-item__value">98.5%</div>
+          <div class="stat-item__label">Detection Accuracy</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item__value">24/7</div>
+          <div class="stat-item__label">Monitoring Ready</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item__value">DETR</div>
+          <div class="stat-item__label">Transformer Model</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item__value">&lt;1s</div>
+          <div class="stat-item__label">Processing Time</div>
+        </div>
+      </section>
+
+      <!-- How It Works -->
+      <section class="how-it-works" id="how-it-works">
+        <h2 class="how-it-works__title">How It Works</h2>
+        <div class="how-it-works__steps">
+          <div class="step">
+            <div class="step__number">1</div>
+            <div class="step__label">Upload Video</div>
+            <p class="step__desc">Upload traffic footage in MP4, AVI, or MOV format</p>
+          </div>
+          <div class="step">
+            <div class="step__number">2</div>
+            <div class="step__label">AI Processes</div>
+            <p class="step__desc">DETR model analyzes frames for accidents and vehicles</p>
+          </div>
+          <div class="step">
+            <div class="step__number">3</div>
+            <div class="step__label">View Results</div>
+            <p class="step__desc">Browse events, tickets, and analytics on the dashboard</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="home-footer">
+        Citadel v1.0 — AI Traffic Safety Analytics
+      </footer>
+    </div>
+  `;
+}
