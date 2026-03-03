@@ -59,7 +59,7 @@ Environment variables in `backend/.env`:
 | Variable               | Default                                    | Description                       |
 |------------------------|--------------------------------------------|-----------------------------------|
 | `DATABASE_URL`         | `sqlite:///./citadel.db`                   | Database connection string        |
-| `MODEL_NAME`           | `hilmantm/detr-traffic-accident-detection` | Detection model identifier        |
+| `MODEL_NAME`           | `gopesh353/traffic-accident-detection-detr` | Detection model identifier        |
 | `CONFIDENCE_THRESHOLD` | `0.7`                                      | Min confidence for detections     |
 | `EVIDENCE_DIR`         | `./evidence`                               | Saved evidence frames directory   |
 | `UPLOADS_DIR`          | `./uploads`                                | Uploaded files directory          |

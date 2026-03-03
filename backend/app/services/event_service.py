@@ -1,0 +1,116 @@
+"""Event service — CRUD operations and business logic for events."""
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.models import Event
+from app.schemas import SeverityBreakdown, TimelinePoint
+
+logger = logging.getLogger(__name__)
+
+
+def create_event(
+    db: Session,
+    event_type: str,
+    confidence: float,
+    severity: str,
+    evidence_path: Optional[str] = None,
+    bbox_data: Optional[list[dict]] = None,
+    source_video: Optional[str] = None,
+    frame_number: Optional[int] = None,
+    metadata: Optional[dict] = None,
+) -> Event:
+    """Create a new event in the database."""
+    event = Event(
+        event_type=event_type,
+        confidence=confidence,
+        severity=severity,
+        evidence_path=evidence_path,
+        bbox_data=bbox_data,
+        source_video=source_video,
+        frame_number=frame_number,
+        metadata_=metadata,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    logger.info("Created event: %s", event)
+    return event
+
+
+def list_events(
+    db: Session,
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+) -> tuple[list[Event], int]:
+    """List events with optional filtering. Returns (events, total_count)."""
+    query = db.query(Event)
+
+    if event_type:
+        query = query.filter(Event.event_type == event_type)
+    if severity:
+        query = query.filter(Event.severity == severity)
+    if date_from:
+        query = query.filter(Event.timestamp >= date_from)
+    if date_to:
+        query = query.filter(Event.timestamp <= date_to)
+
+    total = query.count()
+    events = query.order_by(Event.timestamp.desc()).offset(offset).limit(limit).all()
+    return events, total
+
+
+def get_event(db: Session, event_id: str) -> Optional[Event]:
+    """Get a single event by ID."""
+    return db.query(Event).filter(Event.id == event_id).first()
+
+
+def get_stats(db: Session) -> dict:
+    """Get aggregate statistics for the dashboard."""
+    total_events = db.query(func.count(Event.id)).scalar() or 0
+    total_accidents = db.query(func.count(Event.id)).filter(Event.event_type == "accident").scalar() or 0
+    total_vehicles = db.query(func.count(Event.id)).filter(Event.event_type == "vehicle").scalar() or 0
+
+    # Severity breakdown (accidents only)
+    severity_high = db.query(func.count(Event.id)).filter(
+        Event.event_type == "accident", Event.severity == "high"
+    ).scalar() or 0
+    severity_medium = db.query(func.count(Event.id)).filter(
+        Event.event_type == "accident", Event.severity == "medium"
+    ).scalar() or 0
+    severity_low = db.query(func.count(Event.id)).filter(
+        Event.event_type == "accident", Event.severity == "low"
+    ).scalar() or 0
+
+    # 24h timeline (events per hour)
+    now = datetime.now(timezone.utc)
+    timeline: list[TimelinePoint] = []
+    for i in range(24):
+        hour_start = now - timedelta(hours=23 - i)
+        hour_end = hour_start + timedelta(hours=1)
+        count = db.query(func.count(Event.id)).filter(
+            Event.timestamp >= hour_start,
+            Event.timestamp < hour_end,
+        ).scalar() or 0
+        timeline.append(TimelinePoint(
+            hour=hour_start.strftime("%H:00"),
+            count=count,
+        ))
+
+    return {
+        "total_events": total_events,
+        "total_accidents": total_accidents,
+        "total_vehicles": total_vehicles,
+        "severity_breakdown": SeverityBreakdown(
+            high=severity_high, medium=severity_medium, low=severity_low
+        ),
+        "timeline_24h": timeline,
+    }
