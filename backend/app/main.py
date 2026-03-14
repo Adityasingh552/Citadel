@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     # Create required directories
     os.makedirs(config.evidence_dir, exist_ok=True)
     os.makedirs(config.uploads_dir, exist_ok=True)
+    os.makedirs(config.data_dir, exist_ok=True)
 
     # Load DETR model
     logger.info("Loading AI detection model...")
@@ -49,12 +50,16 @@ async def lifespan(app: FastAPI):
     # Initialize camera monitoring service
     monitor_service.set_dependencies(camera_service, processor)
 
+    # Pre-load camera data (uses local CSV cache — fast on reload)
+    camera_service.set_data_dir(config.data_dir)
+    logger.info("Pre-loading camera data...")
+    camera_service.load_cameras_on_startup()
+
     logger.info("Citadel backend ready")
     yield
 
-    # Shutdown: stop any active monitoring
-    if monitor_service.status.active:
-        monitor_service.stop()
+    # Shutdown: stop all active monitors
+    monitor_service.stop_all()
     logger.info("Citadel backend shutting down")
 
 

@@ -7,14 +7,16 @@ import { renderEvents } from './views/Events.js';
 import { renderTickets } from './views/Tickets.js';
 import { renderLiveFeed } from './views/LiveFeed.js';
 import { renderMonitor, destroyMonitor } from './views/Monitor.js';
+import { renderCameras, destroyCameras } from './views/Cameras.js';
 import { renderSettings } from './views/Settings.js';
 
 const NAV_ITEMS: { id: DashboardView; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'events', label: 'Events' },
   { id: 'tickets', label: 'Tickets' },
-  { id: 'live', label: 'Live Feed' },
+  { id: 'live', label: 'Manual Feed' },
   { id: 'monitor', label: 'Live Monitor' },
+  { id: 'cameras', label: 'Cameras' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -22,8 +24,9 @@ const VIEW_TITLES: Record<DashboardView, string> = {
   overview: 'Overview',
   events: 'Events',
   tickets: 'Tickets',
-  live: 'Live Feed',
+  live: 'Manual Feed',
   monitor: 'Live Monitor',
+  cameras: 'Cameras',
   settings: 'Settings',
 };
 
@@ -39,6 +42,7 @@ function getActiveView(): DashboardView {
 function renderViewContent(view: DashboardView, container: HTMLElement): void {
   // Clean up previous views that need it
   destroyMonitor();
+  destroyCameras();
 
   switch (view) {
     case 'overview': renderOverview(container); break;
@@ -46,6 +50,7 @@ function renderViewContent(view: DashboardView, container: HTMLElement): void {
     case 'tickets': renderTickets(container); break;
     case 'live': renderLiveFeed(container); break;
     case 'monitor': renderMonitor(container); break;
+    case 'cameras': renderCameras(container); break;
     case 'settings': renderSettings(container); break;
   }
 }
@@ -53,6 +58,7 @@ function renderViewContent(view: DashboardView, container: HTMLElement): void {
 /** Clean up dashboard resources (e.g., monitor timers/map) before leaving. */
 export function cleanupDashboard(): void {
   destroyMonitor();
+  destroyCameras();
 }
 
 export function renderDashboard(container: HTMLElement): void {

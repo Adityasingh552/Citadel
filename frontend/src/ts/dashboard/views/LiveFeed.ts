@@ -1,4 +1,4 @@
-/** Dashboard — Live Feed view with interactive video player and detection.
+/** Dashboard — Manual Feed view with interactive video player and detection.
  *
  * Uses global processing state so the user can navigate away
  * and come back to see the ongoing/completed processing status.

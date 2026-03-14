@@ -26,7 +26,7 @@ async def list_districts(_admin: str = Depends(get_current_admin)):
 async def list_cameras(
     district: int | None = Query(None, description="Filter by district number"),
     search: str | None = Query(None, description="Search by location name"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=5000),
     _admin: str = Depends(get_current_admin),
 ):
     """List available traffic cameras from Caltrans CCTV network.
@@ -103,37 +103,95 @@ async def get_snapshot_url(
     }
 
 
+@router.get("/{camera_id}/info")
+async def get_camera_info(
+    camera_id: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """Get full camera details by ID (used by the Cameras detail view)."""
+    camera = camera_service.get_camera_by_id(camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    return {"camera": camera.to_dict()}
+
+
 # ── Monitoring endpoints ──────────────────────────────────────────
 
 @router.post("/monitor/start")
 async def start_monitoring(
     camera_id: str = Query(..., description="Camera ID to monitor"),
-    interval: int = Query(30, ge=10, le=300, description="Poll interval in seconds"),
     _admin: str = Depends(get_current_admin),
 ):
     """Start auto-monitoring a camera feed.
 
-    Polls the camera snapshot at the specified interval and runs
-    AI detection on each frame. Creates events and tickets automatically.
-    Only one camera can be monitored at a time.
+    Uses the camera's own update_frequency for the poll interval.
+    AI detection runs on each new snapshot. Creates events and tickets
+    automatically. Multiple cameras can be monitored simultaneously.
     """
     camera = camera_service.get_camera_by_id(camera_id)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found. Fetch the camera list first.")
 
-    result = await asyncio.to_thread(monitor_service.start, camera, interval)
+    result = await asyncio.to_thread(monitor_service.start, camera)
     return {"message": "Monitoring started", "status": result}
 
 
-@router.post("/monitor/stop")
-async def stop_monitoring(_admin: str = Depends(get_current_admin)):
-    """Stop the current monitoring session."""
-    result = await asyncio.to_thread(monitor_service.stop)
+@router.post("/monitor/{camera_id}/stop")
+async def stop_monitoring_camera(
+    camera_id: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """Stop monitoring a specific camera."""
+    result = await asyncio.to_thread(monitor_service.stop, camera_id)
     return {"message": "Monitoring stopped", "status": result}
 
 
+@router.post("/monitor/stop")
+async def stop_all_monitoring(_admin: str = Depends(get_current_admin)):
+    """Stop all active monitoring sessions."""
+    count = await asyncio.to_thread(monitor_service.stop_all)
+    return {"message": f"Stopped {count} monitor(s)", "stopped": count}
+
+
 @router.get("/monitor/status")
-async def get_monitor_status(_admin: str = Depends(get_current_admin)):
-    """Get the current monitoring session status, including recent detections."""
-    status = monitor_service.status
-    return {"status": status.to_dict()}
+async def get_all_monitor_statuses(_admin: str = Depends(get_current_admin)):
+    """Get status for all active (and recently stopped) monitors."""
+    statuses = monitor_service.get_all_statuses()
+    active_count = sum(1 for s in statuses if s["active"])
+    return {
+        "monitors": statuses,
+        "active_count": active_count,
+        "total_count": len(statuses),
+    }
+
+
+@router.get("/monitor/{camera_id}/status")
+async def get_camera_monitor_status(
+    camera_id: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """Get monitoring status for a specific camera."""
+    status = monitor_service.get_status(camera_id)
+    if status is None:
+        return {"status": {"active": False, "camera_id": camera_id}}
+    return {"status": status}
+
+
+@router.get("/{camera_id}/snapshot-changed")
+async def check_snapshot_changed(
+    camera_id: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """HEAD-based check: has the camera snapshot changed since last fetch?
+
+    Used by the frontend to avoid downloading unchanged images.
+    """
+    camera = camera_service.get_camera_by_id(camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    changed = await asyncio.to_thread(
+        camera_service.has_snapshot_changed, camera.snapshot_url
+    )
+    return {"camera_id": camera.id, "changed": changed}

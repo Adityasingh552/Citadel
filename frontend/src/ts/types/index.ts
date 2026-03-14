@@ -3,7 +3,7 @@
 export type EventType = 'accident' | 'vehicle';
 export type Severity = 'high' | 'medium' | 'low';
 export type TicketStatus = 'issued' | 'pending' | 'resolved';
-export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'settings';
+export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'cameras' | 'settings';
 
 export interface BoundingBox {
     x: number;
@@ -118,6 +118,7 @@ export interface CameraInfo {
     county: string;
     route: string;
     in_service: boolean;
+    update_frequency: number;  // minutes — from Caltrans currentImageUpdateFrequency
 }
 
 export interface CameraListResponse {
@@ -155,4 +156,11 @@ export interface MonitorStatus {
     poll_interval: number;
     recent_detections: MonitorDetection[];
     error: string | null;
+    skipped_unchanged: number;
+}
+
+export interface MonitorStatusResponse {
+    monitors: MonitorStatus[];
+    active_count: number;
+    total_count: number;
 }

@@ -62,7 +62,7 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
       <div class="empty-state">
         <div class="empty-state__icon"></div>
         <div class="empty-state__title">No events detected yet</div>
-        <div class="empty-state__desc">Upload a video in Live Feed to start detecting</div>
+        <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
       </div>
     `;
   }
@@ -139,7 +139,7 @@ function renderRecentEvents(events: Array<Record<string, unknown>>): void {
       <div class="empty-state">
         <div class="empty-state__icon"></div>
         <div class="empty-state__title">No events detected yet</div>
-        <div class="empty-state__desc">Upload a video in Live Feed to start detecting</div>
+        <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
       </div>
     `;
     return;

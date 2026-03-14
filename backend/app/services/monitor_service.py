@@ -1,20 +1,18 @@
-"""Monitor service — background auto-monitoring loop for live camera feeds.
+"""Monitor service — multi-camera background monitoring with change detection.
 
-Periodically fetches snapshots from a Caltrans camera, runs DETR detection,
-and auto-creates events + tickets for any detections found.
+Each monitored camera gets its own thread that:
+1. Waits for the camera's `update_frequency` (minutes, from Caltrans CSV).
+2. Does a HEAD request to check if the snapshot actually changed.
+3. Only fetches + runs DETR detection when the image is new.
+4. Auto-creates Events and Tickets for any detections found.
 """
 
 import logging
 import threading
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
-
-import cv2
-import numpy as np
-from PIL import Image
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -28,20 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class MonitorDetection:
-    """A single detection from the monitoring loop."""
-    label: str
-    confidence: float
-    severity: str
-    bbox: dict
-    evidence_path: Optional[str] = None
-    timestamp: str = ""
-    camera_name: str = ""
-
-
-@dataclass
 class MonitorStatus:
-    """Current state of the monitoring session."""
+    """Current state of one camera's monitoring session."""
     active: bool = False
     camera_id: Optional[str] = None
     camera_name: str = ""
@@ -52,9 +38,10 @@ class MonitorStatus:
     accidents_found: int = 0
     last_frame_time: Optional[str] = None
     last_snapshot_url: Optional[str] = None
-    poll_interval: int = 30
+    poll_interval: int = 120  # seconds (derived from update_frequency minutes)
     recent_detections: list[dict] = field(default_factory=list)
     error: Optional[str] = None
+    skipped_unchanged: int = 0  # frames skipped because snapshot didn't change
 
     def to_dict(self) -> dict:
         return {
@@ -71,20 +58,28 @@ class MonitorStatus:
             "poll_interval": self.poll_interval,
             "recent_detections": self.recent_detections[-20:],  # Keep last 20
             "error": self.error,
+            "skipped_unchanged": self.skipped_unchanged,
         }
 
 
-class MonitorService:
-    """Manages a background monitoring loop for a single camera feed.
+@dataclass
+class _CameraMonitor:
+    """Internal state for a single monitored camera thread."""
+    camera: CameraInfo
+    thread: threading.Thread
+    stop_event: threading.Event
+    status: MonitorStatus
 
-    Only one camera can be monitored at a time. Starting monitoring on
-    a new camera will stop the previous one.
+
+class MonitorService:
+    """Manages concurrent background monitoring for multiple camera feeds.
+
+    Each camera gets its own thread. The poll interval is derived from the
+    camera's `update_frequency` field (minutes → seconds).
     """
 
     def __init__(self):
-        self._status = MonitorStatus()
-        self._thread: Optional[threading.Thread] = None
-        self._stop_event = threading.Event()
+        self._monitors: dict[str, _CameraMonitor] = {}  # camera_id -> monitor
         self._lock = threading.Lock()
         self._camera_service: Optional[CameraService] = None
         self._processor: Optional[VideoProcessor] = None
@@ -98,90 +93,164 @@ class MonitorService:
         self._camera_service = camera_service
         self._processor = processor
 
-    @property
-    def status(self) -> MonitorStatus:
+    # ── Public API ──
+
+    def start(self, camera: CameraInfo) -> dict:
+        """Start monitoring a camera. If already monitored, returns existing status."""
         with self._lock:
-            return self._status
+            existing = self._monitors.get(camera.id)
+            if existing and existing.status.active:
+                return existing.status.to_dict()
 
-    def start(self, camera: CameraInfo, poll_interval: int = 30) -> dict:
-        """Start monitoring a camera. Stops any existing monitoring first."""
-        # Stop existing monitoring if running
-        if self._status.active:
-            self.stop()
+        # Derive poll interval: camera update_frequency is in minutes
+        poll_seconds = max(camera.update_frequency * 60, 30)  # min 30s
 
-        with self._lock:
-            self._status = MonitorStatus(
-                active=True,
-                camera_id=camera.id,
-                camera_name=camera.location_name,
-                camera_location=f"D{camera.district} — {camera.county}, {camera.route}",
-                started_at=datetime.now(timezone.utc).isoformat(),
-                poll_interval=poll_interval,
-                last_snapshot_url=camera.snapshot_url,
-            )
+        status = MonitorStatus(
+            active=True,
+            camera_id=camera.id,
+            camera_name=camera.location_name,
+            camera_location=f"D{camera.district} — {camera.county}, {camera.route}",
+            started_at=datetime.now(timezone.utc).isoformat(),
+            poll_interval=poll_seconds,
+            last_snapshot_url=camera.snapshot_url,
+        )
 
-        self._stop_event.clear()
-        self._thread = threading.Thread(
+        stop_event = threading.Event()
+        thread = threading.Thread(
             target=self._monitor_loop,
-            args=(camera, poll_interval),
+            args=(camera, poll_seconds, stop_event, status),
             daemon=True,
             name=f"monitor-{camera.id}",
         )
-        self._thread.start()
 
-        logger.info(
-            "Started monitoring camera: %s (interval=%ds)",
-            camera.location_name,
-            poll_interval,
+        monitor = _CameraMonitor(
+            camera=camera,
+            thread=thread,
+            stop_event=stop_event,
+            status=status,
         )
-        return self._status.to_dict()
-
-    def stop(self) -> dict:
-        """Stop the current monitoring session."""
-        self._stop_event.set()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=10)
 
         with self._lock:
-            self._status.active = False
+            self._monitors[camera.id] = monitor
 
-        logger.info("Monitoring stopped")
-        return self._status.to_dict()
+        thread.start()
 
-    def _monitor_loop(self, camera: CameraInfo, poll_interval: int):
-        """Background loop: fetch snapshot → detect → create events."""
+        logger.info(
+            "Started monitoring camera: %s (poll=%ds, freq=%dm)",
+            camera.location_name,
+            poll_seconds,
+            camera.update_frequency,
+        )
+        return status.to_dict()
+
+    def stop(self, camera_id: str) -> dict:
+        """Stop monitoring a specific camera."""
+        with self._lock:
+            monitor = self._monitors.get(camera_id)
+            if not monitor:
+                return {"active": False, "camera_id": camera_id}
+
+        monitor.stop_event.set()
+        if monitor.thread.is_alive():
+            monitor.thread.join(timeout=10)
+
+        with self._lock:
+            monitor.status.active = False
+
+        logger.info("Stopped monitoring camera: %s", monitor.camera.location_name)
+        return monitor.status.to_dict()
+
+    def stop_all(self) -> int:
+        """Stop all active monitors. Returns count of monitors stopped."""
+        with self._lock:
+            camera_ids = list(self._monitors.keys())
+
+        count = 0
+        for cid in camera_ids:
+            self.stop(cid)
+            count += 1
+
+        logger.info("Stopped all monitors (%d)", count)
+        return count
+
+    def get_status(self, camera_id: str) -> Optional[dict]:
+        """Get status for a specific camera monitor."""
+        with self._lock:
+            monitor = self._monitors.get(camera_id)
+            if not monitor:
+                return None
+            return monitor.status.to_dict()
+
+    def get_all_statuses(self) -> list[dict]:
+        """Get status for all active (and recently stopped) monitors."""
+        with self._lock:
+            return [m.status.to_dict() for m in self._monitors.values()]
+
+    def get_active_camera_ids(self) -> list[str]:
+        """Return IDs of all currently active monitors."""
+        with self._lock:
+            return [
+                cid for cid, m in self._monitors.items()
+                if m.status.active
+            ]
+
+    def is_monitoring(self, camera_id: str) -> bool:
+        """Check if a specific camera is being monitored."""
+        with self._lock:
+            monitor = self._monitors.get(camera_id)
+            return monitor is not None and monitor.status.active
+
+    # ── Background Loop ──
+
+    def _monitor_loop(
+        self,
+        camera: CameraInfo,
+        poll_seconds: int,
+        stop_event: threading.Event,
+        status: MonitorStatus,
+    ):
+        """Background loop: HEAD check → fetch if changed → detect → create events."""
         settings = get_settings()
 
-        while not self._stop_event.is_set():
+        while not stop_event.is_set():
             try:
-                self._process_single_frame(camera, settings)
+                self._process_single_frame(camera, settings, status, stop_event)
             except Exception as e:
-                logger.error("Monitor loop error: %s", e)
-                with self._lock:
-                    self._status.error = str(e)
+                logger.error("Monitor loop error for %s: %s", camera.location_name, e)
+                status.error = str(e)
 
-            # Wait for the next poll interval (or until stopped)
-            self._stop_event.wait(timeout=poll_interval)
+            # Wait for the poll interval (or until stopped)
+            stop_event.wait(timeout=poll_seconds)
 
         logger.info("Monitor loop exited for camera: %s", camera.location_name)
 
-    def _process_single_frame(self, camera: CameraInfo, settings):
-        """Fetch one snapshot, run detection, and save results."""
+    def _process_single_frame(
+        self,
+        camera: CameraInfo,
+        settings,
+        status: MonitorStatus,
+        stop_event: threading.Event,
+    ):
+        """HEAD-check, fetch one snapshot if changed, run detection, save results."""
         if not self._camera_service or not self._processor:
             logger.error("Monitor dependencies not initialized")
+            return
+
+        # HEAD check: has the snapshot actually changed?
+        if not self._camera_service.has_snapshot_changed(camera.snapshot_url):
+            status.skipped_unchanged += 1
+            logger.debug("Snapshot unchanged for %s, skipping", camera.location_name)
             return
 
         # Fetch snapshot
         pil_image = self._camera_service.fetch_snapshot_as_pil(camera.snapshot_url)
         if pil_image is None:
             logger.warning("Failed to fetch snapshot for %s", camera.location_name)
-            with self._lock:
-                self._status.error = "Failed to fetch camera snapshot"
+            status.error = "Failed to fetch camera snapshot"
             return
 
         # Clear any previous error on success
-        with self._lock:
-            self._status.error = None
+        status.error = None
 
         # Read runtime settings for detection config
         rt = get_runtime_settings()
@@ -200,9 +269,8 @@ class MonitorService:
 
         now = datetime.now(timezone.utc)
 
-        with self._lock:
-            self._status.frames_analyzed += 1
-            self._status.last_frame_time = now.isoformat()
+        status.frames_analyzed += 1
+        status.last_frame_time = now.isoformat()
 
         if not detections:
             return
@@ -211,10 +279,8 @@ class MonitorService:
         db = SessionLocal()
         try:
             for det in detections:
-                # Build camera-specific source info
                 source_name = f"live:{camera.location_name}"
 
-                # Create event with camera metadata
                 event = event_service.create_event(
                     db=db,
                     event_type=det.label,
@@ -235,27 +301,24 @@ class MonitorService:
                     },
                 )
 
-                # Auto-create ticket for accidents
                 if det.label == "accident":
                     ticket_service.create_ticket_from_event(
                         db,
                         event,
                         location_info=f"{camera.location_name} | {camera.county}, {camera.route}",
                     )
-                    with self._lock:
-                        self._status.accidents_found += 1
+                    status.accidents_found += 1
 
-                with self._lock:
-                    self._status.detections_found += 1
-                    self._status.recent_detections.append({
-                        "label": det.label,
-                        "confidence": det.confidence,
-                        "severity": det.severity,
-                        "evidence_path": evidence_path,
-                        "timestamp": now.isoformat(),
-                        "camera_name": camera.location_name,
-                        "event_id": event.id,
-                    })
+                status.detections_found += 1
+                status.recent_detections.append({
+                    "label": det.label,
+                    "confidence": det.confidence,
+                    "severity": det.severity,
+                    "evidence_path": evidence_path,
+                    "timestamp": now.isoformat(),
+                    "camera_name": camera.location_name,
+                    "event_id": event.id,
+                })
 
                 logger.info(
                     "Monitor detection: %s (%.0f%%) at %s",

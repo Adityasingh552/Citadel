@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.7
     evidence_dir: str = "./evidence"
     uploads_dir: str = "./uploads"
+    data_dir: str = "./data"  # Local cache for Caltrans CSV files
 
     # Detection toggles
     detect_accidents: bool = True

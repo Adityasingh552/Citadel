@@ -54,6 +54,7 @@ htmlcov/
 # ── Backend Runtime Data ────────────────────────────────────────────
 backend/uploads/
 backend/evidence/
+backend/data/
 backend/runtime_settings.json
 
 # ── AI / Model Cache ───────────────────────────────────────────────
