@@ -12,7 +12,9 @@ from app.database import create_tables
 from app.config import get_settings
 from app.detection.detector import AccidentDetector
 from app.detection.processor import VideoProcessor
-from app.routes import auth, detection, events, tickets, stats, settings
+from app.services.camera_service import camera_service
+from app.services.monitor_service import monitor_service
+from app.routes import auth, detection, events, tickets, stats, settings, cameras
 
 # Configure logging
 logging.basicConfig(
@@ -44,8 +46,15 @@ async def lifespan(app: FastAPI):
     processor = VideoProcessor(detector)
     detection.set_processor(processor)
 
+    # Initialize camera monitoring service
+    monitor_service.set_dependencies(camera_service, processor)
+
     logger.info("Citadel backend ready")
     yield
+
+    # Shutdown: stop any active monitoring
+    if monitor_service.status.active:
+        monitor_service.stop()
     logger.info("Citadel backend shutting down")
 
 
@@ -77,6 +86,7 @@ app.include_router(events.router)
 app.include_router(tickets.router)
 app.include_router(stats.router)
 app.include_router(settings.router)
+app.include_router(cameras.router)
 
 
 @app.get("/api/health", tags=["system"])

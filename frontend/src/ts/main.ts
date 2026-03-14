@@ -3,12 +3,17 @@
 import { api } from './api.js';
 import { renderHome } from './home/Home.js';
 import { renderLogin } from './login/Login.js';
-import { renderDashboard } from './dashboard/Dashboard.js';
+import { renderDashboard, cleanupDashboard } from './dashboard/Dashboard.js';
 
 const app = document.getElementById('app')!;
 
 function route(): void {
     const hash = window.location.hash || '#/';
+
+    // Clean up dashboard resources when navigating away
+    if (!hash.startsWith('#/dashboard')) {
+        cleanupDashboard();
+    }
 
     if (hash.startsWith('#/login')) {
         renderLogin(app);

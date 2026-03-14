@@ -143,6 +143,30 @@ class ApiClient {
         }
         return res.json();
     }
+
+    async delete<T>(path: string): Promise<T> {
+        const res = await fetch(this.baseUrl + path, {
+            method: 'DELETE',
+            headers: this.authHeaders(),
+        });
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
+        return res.json();
+    }
+
+    // ── Camera & Monitor API ──
+
+    /** Get the snapshot proxy URL for a camera (returns image bytes via backend). */
+    getSnapshotProxyUrl(cameraId: string): string {
+        return `${this.baseUrl}/cameras/${cameraId}/snapshot`;
+    }
+
+    /** Build auth headers object for use in <img> fetch or manual requests. */
+    getAuthHeaders(): Record<string, string> {
+        return this.authHeaders();
+    }
 }
 
 export const api = new ApiClient();

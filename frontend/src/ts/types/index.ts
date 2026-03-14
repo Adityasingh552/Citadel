@@ -3,7 +3,7 @@
 export type EventType = 'accident' | 'vehicle';
 export type Severity = 'high' | 'medium' | 'low';
 export type TicketStatus = 'issued' | 'pending' | 'resolved';
-export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'settings';
+export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'settings';
 
 export interface BoundingBox {
     x: number;
@@ -101,4 +101,58 @@ export interface ChartDataPoint {
     label: string;
     value: number;
     color: string;
+}
+
+// ── Camera / Monitor Types ──
+
+export interface CameraInfo {
+    id: string;
+    district: number;
+    district_name: string;
+    location_name: string;
+    latitude: number;
+    longitude: number;
+    snapshot_url: string;
+    stream_url: string;
+    direction: string;
+    county: string;
+    route: string;
+    in_service: boolean;
+}
+
+export interface CameraListResponse {
+    cameras: CameraInfo[];
+    total: number;
+    limit: number;
+}
+
+export interface CameraDistrict {
+    id: number;
+    name: string;
+}
+
+export interface MonitorDetection {
+    label: string;
+    confidence: number;
+    severity: string;
+    evidence_path: string | null;
+    timestamp: string;
+    camera_name: string;
+    event_id: string;
+}
+
+export interface MonitorStatus {
+    active: boolean;
+    camera_id: string | null;
+    camera_name: string;
+    camera_location: string;
+    started_at: string | null;
+    frames_analyzed: number;
+    detections_found: number;
+    accidents_found: number;
+    last_frame_time: string | null;
+    last_snapshot_url: string | null;
+    poll_interval: number;
+    recent_detections: MonitorDetection[];
+    error: string | null;
 }
