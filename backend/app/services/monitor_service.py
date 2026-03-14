@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.detection.detector import AccidentDetector, Detection
 from app.detection.processor import VideoProcessor
+from app.models import ActiveMonitor
 from app.services.camera_service import CameraService, CameraInfo
 from app.services import event_service, ticket_service
 from app.routes.settings import get_runtime_settings
@@ -135,6 +136,9 @@ class MonitorService:
 
         thread.start()
 
+        # Persist to DB so we can restore on restart
+        self._persist_start(camera.id)
+
         logger.info(
             "Started monitoring camera: %s (poll=%ds, freq=%dm)",
             camera.location_name,
@@ -143,7 +147,7 @@ class MonitorService:
         )
         return status.to_dict()
 
-    def stop(self, camera_id: str) -> dict:
+    def stop(self, camera_id: str, persist: bool = True) -> dict:
         """Stop monitoring a specific camera."""
         with self._lock:
             monitor = self._monitors.get(camera_id)
@@ -157,17 +161,24 @@ class MonitorService:
         with self._lock:
             monitor.status.active = False
 
+        # Remove from DB (skip during shutdown so we can restore on next boot)
+        if persist:
+            self._persist_stop(camera_id)
+
         logger.info("Stopped monitoring camera: %s", monitor.camera.location_name)
         return monitor.status.to_dict()
 
-    def stop_all(self) -> int:
-        """Stop all active monitors. Returns count of monitors stopped."""
+    def stop_all(self, persist: bool = True) -> int:
+        """Stop all active monitors. Returns count of monitors stopped.
+
+        When persist=False (shutdown), leaves DB rows intact for restore on next boot.
+        """
         with self._lock:
             camera_ids = list(self._monitors.keys())
 
         count = 0
         for cid in camera_ids:
-            self.stop(cid)
+            self.stop(cid, persist=persist)
             count += 1
 
         logger.info("Stopped all monitors (%d)", count)
@@ -199,6 +210,84 @@ class MonitorService:
         with self._lock:
             monitor = self._monitors.get(camera_id)
             return monitor is not None and monitor.status.active
+
+    # ── DB Persistence ──
+
+    def _persist_start(self, camera_id: str) -> None:
+        """Insert a row into active_monitors (idempotent)."""
+        db = SessionLocal()
+        try:
+            existing = db.query(ActiveMonitor).filter_by(camera_id=camera_id).first()
+            if not existing:
+                db.add(ActiveMonitor(camera_id=camera_id))
+                db.commit()
+        except Exception as e:
+            logger.warning("Failed to persist monitor start for %s: %s", camera_id, e)
+            db.rollback()
+        finally:
+            db.close()
+
+    def _persist_stop(self, camera_id: str) -> None:
+        """Delete the row from active_monitors."""
+        db = SessionLocal()
+        try:
+            db.query(ActiveMonitor).filter_by(camera_id=camera_id).delete()
+            db.commit()
+        except Exception as e:
+            logger.warning("Failed to persist monitor stop for %s: %s", camera_id, e)
+            db.rollback()
+        finally:
+            db.close()
+
+    def _clear_all_persisted(self) -> None:
+        """Delete all rows from active_monitors."""
+        db = SessionLocal()
+        try:
+            db.query(ActiveMonitor).delete()
+            db.commit()
+        except Exception as e:
+            logger.warning("Failed to clear persisted monitors: %s", e)
+            db.rollback()
+        finally:
+            db.close()
+
+    def restore_from_db(self) -> int:
+        """Re-start monitors for cameras persisted in active_monitors.
+
+        Called once during app lifespan startup, after camera data is loaded.
+        Returns the number of monitors restored.
+        """
+        if not self._camera_service:
+            logger.error("Cannot restore monitors — camera_service not set")
+            return 0
+
+        db = SessionLocal()
+        try:
+            rows = db.query(ActiveMonitor).all()
+            camera_ids = [r.camera_id for r in rows]
+        except Exception as e:
+            logger.error("Failed to read active_monitors table: %s", e)
+            return 0
+        finally:
+            db.close()
+
+        if not camera_ids:
+            return 0
+
+        logger.info("Restoring %d monitors from previous session...", len(camera_ids))
+        restored = 0
+        for cid in camera_ids:
+            camera = self._camera_service.get_camera_by_id(cid)
+            if camera:
+                self.start(camera)
+                restored += 1
+                logger.info("Restored monitor: %s", camera.location_name)
+            else:
+                logger.warning("Cannot restore monitor for unknown camera %s — removing", cid)
+                self._persist_stop(cid)
+
+        logger.info("Monitor restore complete: %d/%d restored", restored, len(camera_ids))
+        return restored
 
     # ── Background Loop ──
 

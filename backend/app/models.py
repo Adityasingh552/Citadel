@@ -1,9 +1,9 @@
-"""SQLAlchemy ORM models for events and tickets."""
+"""SQLAlchemy ORM models for events, tickets, and active monitors."""
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, String, Float, Integer, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -60,3 +60,19 @@ class Ticket(Base):
 
     def __repr__(self) -> str:
         return f"<Ticket {self.id[:8]} type={self.violation_type} status={self.status}>"
+
+
+class ActiveMonitor(Base):
+    """Persists which cameras are actively being monitored.
+
+    Rows are inserted when monitoring starts and deleted when it stops.
+    On backend restart the lifespan reads this table and re-starts monitors.
+    """
+
+    __tablename__ = "active_monitors"
+
+    camera_id = Column(String, primary_key=True)
+    started_at = Column(DateTime, default=_utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ActiveMonitor camera={self.camera_id}>"

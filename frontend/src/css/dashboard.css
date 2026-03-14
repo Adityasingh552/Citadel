@@ -221,6 +221,10 @@
     gap: var(--space-1);
 }
 
+.card__header .feed-video__live-badge {
+    position: static;
+}
+
 .feed-video__live-dot {
     width: 6px;
     height: 6px;

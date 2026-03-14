@@ -55,11 +55,16 @@ async def lifespan(app: FastAPI):
     logger.info("Pre-loading camera data...")
     camera_service.load_cameras_on_startup()
 
+    # Restore previously active monitors from DB
+    restored = monitor_service.restore_from_db()
+    if restored:
+        logger.info("Restored %d camera monitors from previous session", restored)
+
     logger.info("Citadel backend ready")
     yield
 
-    # Shutdown: stop all active monitors
-    monitor_service.stop_all()
+    # Shutdown: stop all active monitors but keep DB rows for next restart
+    monitor_service.stop_all(persist=False)
     logger.info("Citadel backend shutting down")
 
 
