@@ -3,6 +3,7 @@
 import { api } from '../../api.js';
 import type { ViolationTicket, TicketListResponse } from '../../types/index.js';
 import { formatDateTime, eventTypeLabel } from '../../utils/formatters.js';
+import { Toast } from '../../utils/toast.js';
 
 let currentTab = '';
 
@@ -205,7 +206,7 @@ function showTicketDetail(ticket: ViolationTicket): void {
         closeModal();
         await loadTickets();
       } catch {
-        alert('Failed to update status');
+        Toast.show('Failed to update ticket status', 'error');
       }
     });
   }

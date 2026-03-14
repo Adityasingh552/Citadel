@@ -2,6 +2,7 @@
 
 import { api } from '../../api.js';
 import type { AppSettings } from '../../types/index.js';
+import { Toast } from '../../utils/toast.js';
 
 export async function renderSettings(container: HTMLElement): Promise<void> {
   let settings: AppSettings | null = null;
@@ -142,9 +143,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
         detect_accidents: accidents,
         detect_vehicles: vehicles,
       });
-      alert('Settings saved!');
+      Toast.show('Settings saved successfully', 'success');
     } catch (err) {
-      alert('Failed to save settings');
+      Toast.show('Failed to save settings', 'error');
     }
   });
 
@@ -159,7 +160,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       });
       renderSettings(container);
     } catch {
-      alert('Failed to reset');
+      Toast.show('Failed to reset settings', 'error');
     }
   });
 
@@ -182,9 +183,13 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       const d = data.deleted;
-      alert(`Deleted: ${d.events} events, ${d.tickets} tickets, ${d.evidence_files} evidence files, ${d.upload_files} uploads`);
+      Toast.show(
+        `Deleted: ${d.events} events, ${d.tickets} tickets, ${d.evidence_files} evidence files, ${d.upload_files} uploads`,
+        'success',
+        5000,
+      );
     } catch {
-      alert('Failed to delete data');
+      Toast.show('Failed to delete data', 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Delete All';

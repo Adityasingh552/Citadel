@@ -373,6 +373,26 @@
     border-left: 3px solid var(--info);
 }
 
+.toast__icon {
+    font-size: var(--text-base);
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.toast--success .toast__icon { color: var(--success); }
+.toast--error   .toast__icon { color: var(--danger); }
+.toast--info    .toast__icon { color: var(--info); }
+
+.toast__message {
+    flex: 1;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.toast--out {
+    animation: slideOut 250ms ease forwards;
+}
+
 /* ── Empty State ── */
 .empty-state {
     display: flex;
@@ -494,6 +514,18 @@
     to {
         transform: translateX(0);
         opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateX(110%);
+        opacity: 0;
     }
 }
 

@@ -132,9 +132,15 @@ class VideoProcessor:
 
                         if has_accident:
                             prev_accident_frame = frame_idx
+                            # Per-frame dedup: keep only the highest-confidence accident
+                            # to avoid multiple tickets for the same collision event
+                            accident_detections = [d for d in detections if d.label == "accident"]
+                            vehicle_detections = [d for d in detections if d.label != "accident"]
+                            best_accident = max(accident_detections, key=lambda d: d.confidence)
+                            detections = [best_accident] + vehicle_detections
 
-                        # Save evidence frame
-                        evidence_path = self._save_evidence(frame, frame_idx)
+                        # Save evidence frame with annotated bounding boxes
+                        evidence_path = self._save_evidence(frame, frame_idx, detections)
 
                         timestamp_sec = frame_idx / fps
 
@@ -166,20 +172,95 @@ class VideoProcessor:
         image: Image.Image,
         confidence_threshold: float | None = None,
         allowed_labels: set[str] | None = None,
-    ) -> list[Detection]:
-        """Process a single image and return detections."""
+    ) -> tuple[list[Detection], str | None]:
+        """Process a single image and return detections with an evidence path.
+
+        Returns:
+            Tuple of (detections, evidence_path). evidence_path is None if
+            no detections were found.
+        """
         detections = self.detector.detect(image, confidence_threshold=confidence_threshold)
         if allowed_labels:
             detections = [d for d in detections if d.label in allowed_labels]
-        return detections
 
-    def _save_evidence(self, frame: np.ndarray, frame_number: int) -> str:
-        """Save a frame as a JPEG evidence file.
+        evidence_path: str | None = None
+        if detections:
+            # Per-image accident dedup: keep only highest-confidence accident
+            accident_dets = [d for d in detections if d.label == "accident"]
+            vehicle_dets = [d for d in detections if d.label != "accident"]
+            if accident_dets:
+                best_accident = max(accident_dets, key=lambda d: d.confidence)
+                detections = [best_accident] + vehicle_dets
+
+            # Convert PIL image to BGR numpy array for OpenCV annotation
+            bgr_frame = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            evidence_path = self._save_evidence(bgr_frame, 0, detections)
+
+        return detections, evidence_path
+
+    def _save_evidence(
+        self,
+        frame: np.ndarray,
+        frame_number: int,
+        detections: list[Detection] | None = None,
+    ) -> str:
+        """Save a frame as a JPEG evidence file with annotated bounding boxes.
+
+        Draws colored bounding boxes and confidence labels on the frame
+        before saving. Accidents are drawn in red, vehicles in yellow.
 
         Returns:
             Relative path to the saved file.
         """
+        annotated = frame.copy()
+
+        if detections:
+            for det in detections:
+                x = int(det.bbox["x"])
+                y = int(det.bbox["y"])
+                w = int(det.bbox["width"])
+                h = int(det.bbox["height"])
+                x2, y2 = x + w, y + h
+
+                # Color: red for accident (BGR), yellow for vehicle
+                color = (59, 59, 239) if det.label == "accident" else (0, 195, 255)
+                thickness = 2
+
+                # Draw bounding box
+                cv2.rectangle(annotated, (x, y), (x2, y2), color, thickness)
+
+                # Build label text
+                label_text = f"{det.label} {det.confidence:.0%}"
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 0.55
+                font_thickness = 1
+                (text_w, text_h), baseline = cv2.getTextSize(
+                    label_text, font, font_scale, font_thickness
+                )
+
+                # Draw filled background rectangle for label
+                label_y = max(y - text_h - baseline - 6, 0)
+                cv2.rectangle(
+                    annotated,
+                    (x, label_y),
+                    (x + text_w + 8, label_y + text_h + baseline + 6),
+                    color,
+                    cv2.FILLED,
+                )
+
+                # Draw label text in white
+                cv2.putText(
+                    annotated,
+                    label_text,
+                    (x + 4, label_y + text_h + 2),
+                    font,
+                    font_scale,
+                    (255, 255, 255),
+                    font_thickness,
+                    cv2.LINE_AA,
+                )
+
         filename = f"evidence_{uuid.uuid4().hex[:12]}_f{frame_number}.jpg"
         filepath = os.path.join(self.settings.evidence_dir, filename)
-        cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        cv2.imwrite(filepath, annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
         return filename

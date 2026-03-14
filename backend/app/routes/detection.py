@@ -6,6 +6,7 @@ import os
 import shutil
 import uuid
 import threading
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from PIL import Image
 from app.database import get_db
 from app.config import get_settings
 from app.schemas import VideoProcessingResult, DetectionResult, BoundingBox
+from app.models import Event
 from app.services import event_service, ticket_service
 from app.routes.settings import get_runtime_settings
 
@@ -128,9 +130,32 @@ async def detect_video(
     events_created = 0
     tickets_created = 0
     all_detections: list[DetectionResult] = []
+    frame_interval = rt["frame_interval"]
 
     for frame_det in result.frame_detections:
         for det in frame_det.detections:
+            # Cross-run dedup: skip accident if a near-identical event already
+            # exists for this source file (prevents re-upload duplicates)
+            if det.label == "accident":
+                lo = frame_det.frame_number - frame_interval * 3
+                hi = frame_det.frame_number + frame_interval * 3
+                existing = (
+                    db.query(Event)
+                    .filter(
+                        Event.event_type == "accident",
+                        Event.source_video == file.filename,
+                        Event.frame_number >= lo,
+                        Event.frame_number <= hi,
+                    )
+                    .first()
+                )
+                if existing:
+                    logger.debug(
+                        "Skipping duplicate accident at frame %d (matches event %s)",
+                        frame_det.frame_number, existing.id[:8],
+                    )
+                    continue
+
             # Create event
             event = event_service.create_event(
                 db=db,
@@ -212,8 +237,8 @@ async def detect_image(
     if rt["detect_vehicles"]:
         allowed_labels.add("vehicle")
 
-    # Detect
-    detections = processor.process_image(
+    # Detect (returns tuple of detections + annotated evidence path)
+    detections, evidence_path = processor.process_image(
         image,
         confidence_threshold=rt["confidence_threshold"],
         allowed_labels=allowed_labels if allowed_labels else None,
@@ -221,12 +246,33 @@ async def detect_image(
 
     results = []
     for det in detections:
+        # Cross-run dedup for image uploads: skip if same accident already exists
+        # from this source within the last 60 seconds
+        if det.label == "accident":
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
+            existing = (
+                db.query(Event)
+                .filter(
+                    Event.event_type == "accident",
+                    Event.source_video == file.filename,
+                    Event.timestamp >= cutoff,
+                )
+                .first()
+            )
+            if existing:
+                logger.debug(
+                    "Skipping duplicate accident for image %s (matches event %s)",
+                    file.filename, existing.id[:8],
+                )
+                continue
+
         # Create event
         event = event_service.create_event(
             db=db,
             event_type=det.label,
             confidence=det.confidence,
             severity=det.severity,
+            evidence_path=evidence_path,
             bbox_data=[det.bbox],
             source_video=file.filename,
         )
@@ -291,8 +337,8 @@ async def detect_images_batch(
             })
             continue
 
-        # Run detection in thread pool
-        detections = await asyncio.to_thread(
+        # Run detection in thread pool (returns tuple: detections, evidence_path)
+        detections, evidence_path = await asyncio.to_thread(
             processor.process_image,
             image,
             confidence_threshold=rt["confidence_threshold"],
@@ -301,11 +347,31 @@ async def detect_images_batch(
 
         file_detections = []
         for det in detections:
+            # Cross-run dedup: skip if same accident from this file already exists
+            if det.label == "accident":
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
+                existing = (
+                    db.query(Event)
+                    .filter(
+                        Event.event_type == "accident",
+                        Event.source_video == file.filename,
+                        Event.timestamp >= cutoff,
+                    )
+                    .first()
+                )
+                if existing:
+                    logger.debug(
+                        "Skipping duplicate accident for image %s (matches event %s)",
+                        file.filename, existing.id[:8],
+                    )
+                    continue
+
             event = event_service.create_event(
                 db=db,
                 event_type=det.label,
                 confidence=det.confidence,
                 severity=det.severity,
+                evidence_path=evidence_path,
                 bbox_data=[det.bbox],
                 source_video=file.filename,
             )
