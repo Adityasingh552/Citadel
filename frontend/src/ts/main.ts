@@ -1,6 +1,8 @@
-/** Citadel — Main entry point & top-level router. */
+/** Citadel — Main entry point & top-level router with auth gating. */
 
+import { api } from './api.js';
 import { renderHome } from './home/Home.js';
+import { renderLogin } from './login/Login.js';
 import { renderDashboard } from './dashboard/Dashboard.js';
 
 const app = document.getElementById('app')!;
@@ -8,7 +10,14 @@ const app = document.getElementById('app')!;
 function route(): void {
     const hash = window.location.hash || '#/';
 
-    if (hash.startsWith('#/dashboard')) {
+    if (hash.startsWith('#/login')) {
+        renderLogin(app);
+    } else if (hash.startsWith('#/dashboard')) {
+        // Gate: must be authenticated to access dashboard
+        if (!api.isAuthenticated()) {
+            window.location.hash = '#/login';
+            return;
+        }
         renderDashboard(app);
     } else {
         renderHome(app);

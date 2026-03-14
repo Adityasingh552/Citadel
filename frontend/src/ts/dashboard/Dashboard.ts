@@ -1,5 +1,6 @@
 /** Citadel — Dashboard shell with sidebar, header, and view routing. */
 
+import { api } from '../api.js';
 import type { DashboardView } from '../types/index.js';
 import { renderOverview } from './views/Overview.js';
 import { renderEvents } from './views/Events.js';
@@ -64,6 +65,7 @@ export function renderDashboard(container: HTMLElement): void {
             <span class="sidebar__status-dot"></span>
             System Online
           </div>
+          <button class="sidebar__back" id="logout-btn">Logout</button>
           <a href="#/" class="sidebar__back">← Back to Home</a>
         </div>
       </aside>
@@ -92,6 +94,11 @@ export function renderDashboard(container: HTMLElement): void {
   // Start clock
   updateClock();
   setInterval(updateClock, 1000);
+
+  // Logout button
+  document.getElementById('logout-btn')?.addEventListener('click', () => {
+    api.logout();
+  });
 }
 
 function updateClock(): void {

@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.auth import get_current_admin
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,6 +24,7 @@ async def list_events(
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
     db: Session = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
 ):
     """List events with optional filters."""
     events, total = event_service.list_events(
@@ -36,7 +39,7 @@ async def list_events(
 
 
 @router.get("/{event_id}", response_model=EventOut)
-async def get_event(event_id: str, db: Session = Depends(get_db)):
+async def get_event(event_id: str, db: Session = Depends(get_db), _admin: str = Depends(get_current_admin)):
     """Get a single event by ID."""
     event = event_service.get_event(db, event_id)
     if not event:

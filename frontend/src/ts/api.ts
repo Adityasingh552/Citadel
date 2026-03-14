@@ -1,7 +1,58 @@
-/** Citadel API client — Fetch wrapper for /api/* endpoints. */
+/** Citadel API client — Fetch wrapper for /api/* endpoints with JWT auth. */
+
+const TOKEN_KEY = 'citadel_token';
 
 class ApiClient {
     private baseUrl = '/api';
+
+    /** Get the stored JWT token. */
+    getToken(): string | null {
+        return localStorage.getItem(TOKEN_KEY);
+    }
+
+    /** Check if the user is authenticated. */
+    isAuthenticated(): boolean {
+        return !!this.getToken();
+    }
+
+    /** Log in and store the JWT token. */
+    async login(username: string, password: string): Promise<void> {
+        const res = await fetch(this.baseUrl + '/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            throw new Error(data?.detail || 'Invalid credentials');
+        }
+        const data = await res.json();
+        localStorage.setItem(TOKEN_KEY, data.access_token);
+    }
+
+    /** Log out — clear token and redirect to login. */
+    logout(): void {
+        localStorage.removeItem(TOKEN_KEY);
+        window.location.hash = '#/login';
+    }
+
+    /** Build headers with Authorization if token exists. */
+    private authHeaders(extra?: Record<string, string>): Record<string, string> {
+        const headers: Record<string, string> = { ...extra };
+        const token = this.getToken();
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    }
+
+    /** Handle 401 responses — clear token and redirect. */
+    private handleUnauthorized(res: Response): void {
+        if (res.status === 401) {
+            localStorage.removeItem(TOKEN_KEY);
+            window.location.hash = '#/login';
+        }
+    }
 
     async get<T>(path: string, params?: Record<string, string>): Promise<T> {
         const url = new URL(this.baseUrl + path, window.location.origin);
@@ -10,38 +61,52 @@ class ApiClient {
                 if (v) url.searchParams.set(k, v);
             });
         }
-        const res = await fetch(url.toString());
-        if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+        const res = await fetch(url.toString(), {
+            headers: this.authHeaders(),
+        });
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
         return res.json();
     }
 
     async post<T>(path: string, body?: unknown): Promise<T> {
         const res = await fetch(this.baseUrl + path, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.authHeaders({ 'Content-Type': 'application/json' }),
             body: body ? JSON.stringify(body) : undefined,
         });
-        if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
         return res.json();
     }
 
     async patch<T>(path: string, body: unknown): Promise<T> {
         const res = await fetch(this.baseUrl + path, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
         return res.json();
     }
 
     async put<T>(path: string, body: unknown): Promise<T> {
         const res = await fetch(this.baseUrl + path, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
         return res.json();
     }
 
@@ -54,9 +119,13 @@ class ApiClient {
         }
         const res = await fetch(url.toString(), {
             method: 'POST',
+            headers: this.authHeaders(),
             body: formData,
         });
-        if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
         return res.json();
     }
 
@@ -65,9 +134,13 @@ class ApiClient {
         files.forEach(f => formData.append('files', f));
         const res = await fetch(this.baseUrl + path, {
             method: 'POST',
+            headers: this.authHeaders(),
             body: formData,
         });
-        if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+        if (!res.ok) {
+            this.handleUnauthorized(res);
+            throw new Error(`API ${res.status}: ${res.statusText}`);
+        }
         return res.json();
     }
 }

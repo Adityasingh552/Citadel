@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Processing
     frame_interval: int = 30  # Process every Nth frame
 
+    # Auth — all required, no defaults
+    admin_username: str
+    admin_password: str
+    jwt_secret: str
+    jwt_expiry_hours: int = 24
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

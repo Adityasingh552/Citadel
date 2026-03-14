@@ -12,7 +12,7 @@ from app.database import create_tables
 from app.config import get_settings
 from app.detection.detector import AccidentDetector
 from app.detection.processor import VideoProcessor
-from app.routes import detection, events, tickets, stats, settings
+from app.routes import auth, detection, events, tickets, stats, settings
 
 # Configure logging
 logging.basicConfig(
@@ -71,6 +71,7 @@ os.makedirs(config.evidence_dir, exist_ok=True)
 app.mount("/evidence", StaticFiles(directory=config.evidence_dir), name="evidence")
 
 # Include API routes
+app.include_router(auth.router)
 app.include_router(detection.router)
 app.include_router(events.router)
 app.include_router(tickets.router)

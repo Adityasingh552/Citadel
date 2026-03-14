@@ -9,6 +9,8 @@ import threading
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from app.auth import get_current_admin
 from PIL import Image
 
 from app.database import get_db
@@ -66,6 +68,7 @@ async def detect_video(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     job_id: str | None = None,
+    _admin: str = Depends(get_current_admin),
 ):
     """Upload a video file and run accident detection on it.
 
@@ -181,6 +184,7 @@ async def detect_video(
 async def detect_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
 ):
     """Upload a single image and run accident detection."""
     processor = get_processor()
@@ -244,6 +248,7 @@ async def detect_image(
 async def detect_images_batch(
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
 ):
     """Upload multiple images and run accident detection on each.
 

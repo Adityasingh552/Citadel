@@ -3,6 +3,8 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.auth import get_current_admin
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,6 +21,7 @@ async def list_tickets(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
 ):
     """List tickets with optional status/type filters."""
     tickets, total = ticket_service.list_tickets(
@@ -32,7 +35,7 @@ async def list_tickets(
 
 
 @router.get("/{ticket_id}", response_model=TicketOut)
-async def get_ticket(ticket_id: str, db: Session = Depends(get_db)):
+async def get_ticket(ticket_id: str, db: Session = Depends(get_db), _admin: str = Depends(get_current_admin)):
     """Get a single ticket by ID."""
     ticket = ticket_service.get_ticket(db, ticket_id)
     if not ticket:
@@ -45,6 +48,7 @@ async def update_ticket(
     ticket_id: str,
     update: TicketUpdate,
     db: Session = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
 ):
     """Update a ticket's status (issued → pending → resolved)."""
     try:

@@ -7,6 +7,8 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
+
+from app.auth import get_current_admin
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -65,7 +67,7 @@ def get_runtime_settings() -> dict:
 
 
 @router.get("", response_model=SettingsOut)
-async def get_current_settings():
+async def get_current_settings(_admin: str = Depends(get_current_admin)):
     """Get current detection configuration."""
     settings = get_settings()
     overrides = _load_overrides()
@@ -87,7 +89,7 @@ async def get_current_settings():
 
 
 @router.put("", response_model=SettingsOut)
-async def update_settings(update: SettingsUpdate):
+async def update_settings(update: SettingsUpdate, _admin: str = Depends(get_current_admin)):
     """Update detection configuration.
 
     Changes are persisted to runtime_settings.json.
@@ -107,7 +109,7 @@ async def update_settings(update: SettingsUpdate):
 
 
 @router.delete("/data")
-async def delete_all_data(db: Session = Depends(get_db)):
+async def delete_all_data(db: Session = Depends(get_db), _admin: str = Depends(get_current_admin)):
     """Delete all events, tickets, and evidence files."""
     settings = get_settings()
 
