@@ -154,6 +154,8 @@ export interface MonitorStatus {
     last_frame_time: string | null;
     last_snapshot_url: string | null;
     poll_interval: number;
+    stream_mode: boolean;
+    stream_interval: number;
     recent_detections: MonitorDetection[];
     error: string | null;
     skipped_unchanged: number;

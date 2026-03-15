@@ -4,6 +4,8 @@ import csv
 import io
 import logging
 import os
+import shutil
+import subprocess
 import time
 import hashlib
 from dataclasses import dataclass, field
@@ -98,6 +100,7 @@ class CameraService:
         self._snapshot_etags: dict[str, str] = {}  # url -> ETag or Last-Modified
         self._startup_loaded = False
         self._data_dir: str | None = None  # Set via set_data_dir() before startup
+        self._ffmpeg_available: bool = self.check_ffmpeg()
 
     def set_data_dir(self, data_dir: str) -> None:
         """Set the directory for local CSV file cache."""
@@ -379,6 +382,72 @@ class CameraService:
         except Exception as e:
             logger.warning("Failed to decode snapshot image: %s", e)
             return None
+
+    def grab_frame_from_stream(self, stream_url: str, timeout: int = 15) -> Optional[Image.Image]:
+        """Grab a single frame from an HLS video stream using ffmpeg.
+
+        Uses a subprocess to download one HLS segment and extract one frame.
+        Returns a PIL Image (RGB) or None on failure.
+
+        This is designed to be called periodically (every N seconds) for
+        AI analysis of the live video stream. Each call is independent —
+        no persistent connection is kept open.
+
+        Args:
+            stream_url: The full HLS .m3u8 URL.
+            timeout: Maximum seconds to wait for ffmpeg to complete.
+        """
+        if not stream_url:
+            return None
+
+        if not self._ffmpeg_available:
+            logger.warning("ffmpeg is not installed — cannot grab frames from HLS streams")
+            return None
+
+        try:
+            # ffmpeg command:
+            # -i <stream_url>  : input from HLS stream
+            # -frames:v 1      : grab exactly 1 frame
+            # -f image2pipe    : output as raw image data to stdout
+            # -vcodec mjpeg    : encode as JPEG
+            # pipe:1           : write to stdout
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",                    # overwrite
+                    "-loglevel", "error",    # suppress verbose output
+                    "-i", stream_url,
+                    "-frames:v", "1",
+                    "-f", "image2pipe",
+                    "-vcodec", "mjpeg",
+                    "pipe:1",
+                ],
+                capture_output=True,
+                timeout=timeout,
+            )
+
+            if result.returncode != 0:
+                stderr = result.stderr.decode("utf-8", errors="replace")[:500]
+                logger.warning("ffmpeg frame grab failed (rc=%d): %s", result.returncode, stderr)
+                return None
+
+            if not result.stdout or len(result.stdout) < 1000:
+                logger.warning("ffmpeg produced no/tiny output for stream: %s", stream_url)
+                return None
+
+            return Image.open(io.BytesIO(result.stdout)).convert("RGB")
+
+        except subprocess.TimeoutExpired:
+            logger.warning("ffmpeg frame grab timed out after %ds for: %s", timeout, stream_url)
+            return None
+        except Exception as e:
+            logger.warning("ffmpeg frame grab error: %s", e)
+            return None
+
+    @staticmethod
+    def check_ffmpeg() -> bool:
+        """Check if ffmpeg is available on the system PATH."""
+        return shutil.which("ffmpeg") is not None
 
     def get_camera_by_id(self, camera_id: str) -> Optional[CameraInfo]:
         """Look up a camera by its ID from cached data."""

@@ -43,6 +43,8 @@ class MonitorStatus:
     recent_detections: list[dict] = field(default_factory=list)
     error: Optional[str] = None
     skipped_unchanged: int = 0  # frames skipped because snapshot didn't change
+    stream_mode: bool = False  # True = grab frames from HLS stream; False = poll snapshots
+    stream_interval: int = 10  # seconds between HLS frame grabs (only in stream mode)
 
     def to_dict(self) -> dict:
         return {
@@ -60,6 +62,8 @@ class MonitorStatus:
             "recent_detections": self.recent_detections[-20:],  # Keep last 20
             "error": self.error,
             "skipped_unchanged": self.skipped_unchanged,
+            "stream_mode": self.stream_mode,
+            "stream_interval": self.stream_interval,
         }
 
 
@@ -96,15 +100,34 @@ class MonitorService:
 
     # ── Public API ──
 
-    def start(self, camera: CameraInfo) -> dict:
-        """Start monitoring a camera. If already monitored, returns existing status."""
+    def start(self, camera: CameraInfo, stream_mode: bool = False, stream_interval: int = 10) -> dict:
+        """Start monitoring a camera. If already monitored, returns existing status.
+
+        Args:
+            camera: The camera to monitor.
+            stream_mode: If True, grab frames from the HLS video stream instead of polling snapshots.
+            stream_interval: Seconds between HLS frame grabs (only used when stream_mode=True). Min 3, max 120.
+        """
         with self._lock:
             existing = self._monitors.get(camera.id)
             if existing and existing.status.active:
                 return existing.status.to_dict()
 
+        # Validate stream mode settings
+        if stream_mode:
+            stream_interval = max(3, min(120, stream_interval))
+            if not camera.stream_url:
+                logger.warning(
+                    "Stream mode requested for camera %s but no stream_url available, falling back to snapshot mode",
+                    camera.location_name,
+                )
+                stream_mode = False
+
         # Derive poll interval: camera update_frequency is in minutes
-        poll_seconds = max(camera.update_frequency * 60, 30)  # min 30s
+        if stream_mode:
+            poll_seconds = stream_interval
+        else:
+            poll_seconds = max(camera.update_frequency * 60, 30)  # min 30s
 
         status = MonitorStatus(
             active=True,
@@ -114,6 +137,8 @@ class MonitorService:
             started_at=datetime.now(timezone.utc).isoformat(),
             poll_interval=poll_seconds,
             last_snapshot_url=camera.snapshot_url,
+            stream_mode=stream_mode,
+            stream_interval=stream_interval,
         )
 
         stop_event = threading.Event()
@@ -137,12 +162,13 @@ class MonitorService:
         thread.start()
 
         # Persist to DB so we can restore on restart
-        self._persist_start(camera.id)
+        self._persist_start(camera.id, stream_mode, stream_interval)
 
+        mode_label = f"stream (every {stream_interval}s)" if stream_mode else f"snapshot (poll={poll_seconds}s)"
         logger.info(
-            "Started monitoring camera: %s (poll=%ds, freq=%dm)",
+            "Started monitoring camera: %s (%s, freq=%dm)",
             camera.location_name,
-            poll_seconds,
+            mode_label,
             camera.update_frequency,
         )
         return status.to_dict()
@@ -213,13 +239,17 @@ class MonitorService:
 
     # ── DB Persistence ──
 
-    def _persist_start(self, camera_id: str) -> None:
+    def _persist_start(self, camera_id: str, stream_mode: bool = False, stream_interval: int = 10) -> None:
         """Insert a row into active_monitors (idempotent)."""
         db = SessionLocal()
         try:
             existing = db.query(ActiveMonitor).filter_by(camera_id=camera_id).first()
             if not existing:
-                db.add(ActiveMonitor(camera_id=camera_id))
+                db.add(ActiveMonitor(
+                    camera_id=camera_id,
+                    stream_mode=stream_mode,
+                    stream_interval=stream_interval,
+                ))
                 db.commit()
         except Exception as e:
             logger.warning("Failed to persist monitor start for %s: %s", camera_id, e)
@@ -264,7 +294,10 @@ class MonitorService:
         db = SessionLocal()
         try:
             rows = db.query(ActiveMonitor).all()
-            camera_ids = [r.camera_id for r in rows]
+            camera_ids = [
+                (r.camera_id, bool(r.stream_mode), int(r.stream_interval or 10))
+                for r in rows
+            ]
         except Exception as e:
             logger.error("Failed to read active_monitors table: %s", e)
             return 0
@@ -276,12 +309,12 @@ class MonitorService:
 
         logger.info("Restoring %d monitors from previous session...", len(camera_ids))
         restored = 0
-        for cid in camera_ids:
+        for cid, s_mode, s_interval in camera_ids:
             camera = self._camera_service.get_camera_by_id(cid)
             if camera:
-                self.start(camera)
+                self.start(camera, stream_mode=s_mode, stream_interval=s_interval)
                 restored += 1
-                logger.info("Restored monitor: %s", camera.location_name)
+                logger.info("Restored monitor: %s (stream_mode=%s)", camera.location_name, s_mode)
             else:
                 logger.warning("Cannot restore monitor for unknown camera %s — removing", cid)
                 self._persist_stop(cid)
@@ -298,12 +331,20 @@ class MonitorService:
         stop_event: threading.Event,
         status: MonitorStatus,
     ):
-        """Background loop: HEAD check → fetch if changed → detect → create events."""
+        """Background loop: HEAD check → fetch if changed → detect → create events.
+
+        Supports two modes:
+        - Snapshot mode (default): Polls the snapshot URL, checks for changes, then analyzes.
+        - Stream mode: Grabs a frame from the HLS video stream every `stream_interval` seconds.
+        """
         settings = get_settings()
 
         while not stop_event.is_set():
             try:
-                self._process_single_frame(camera, settings, status, stop_event)
+                if status.stream_mode:
+                    self._process_stream_frame(camera, settings, status, stop_event)
+                else:
+                    self._process_single_frame(camera, settings, status, stop_event)
             except Exception as e:
                 logger.error("Monitor loop error for %s: %s", camera.location_name, e)
                 status.error = str(e)
@@ -417,6 +458,113 @@ class MonitorService:
                 )
         except Exception as e:
             logger.error("Failed to save monitor detection: %s", e)
+            db.rollback()
+        finally:
+            db.close()
+
+    def _process_stream_frame(
+        self,
+        camera: CameraInfo,
+        settings,
+        status: MonitorStatus,
+        stop_event: threading.Event,
+    ):
+        """Grab one frame from the HLS video stream and run detection."""
+        if not self._camera_service or not self._processor:
+            logger.error("Monitor dependencies not initialized")
+            return
+
+        if not camera.stream_url:
+            status.error = "No stream URL available for this camera"
+            return
+
+        # Grab a frame from the HLS stream via ffmpeg
+        pil_image = self._camera_service.grab_frame_from_stream(camera.stream_url)
+        if pil_image is None:
+            logger.warning("Failed to grab stream frame for %s", camera.location_name)
+            status.error = "Failed to grab frame from video stream"
+            return
+
+        # Clear any previous error on success
+        status.error = None
+
+        # Read runtime settings for detection config
+        rt = get_runtime_settings()
+        allowed_labels: set[str] = set()
+        if rt["detect_accidents"]:
+            allowed_labels.add("accident")
+        if rt["detect_vehicles"]:
+            allowed_labels.add("vehicle")
+
+        # Run detection
+        detections, evidence_path = self._processor.process_image(
+            pil_image,
+            confidence_threshold=rt["confidence_threshold"],
+            allowed_labels=allowed_labels if allowed_labels else None,
+        )
+
+        now = datetime.now(timezone.utc)
+
+        status.frames_analyzed += 1
+        status.last_frame_time = now.isoformat()
+
+        if not detections:
+            return
+
+        # We have detections — create events and tickets in DB
+        db = SessionLocal()
+        try:
+            for det in detections:
+                source_name = f"stream:{camera.location_name}"
+
+                event = event_service.create_event(
+                    db=db,
+                    event_type=det.label,
+                    confidence=det.confidence,
+                    severity=det.severity,
+                    evidence_path=evidence_path,
+                    bbox_data=[det.bbox],
+                    source_video=source_name,
+                    metadata={
+                        "camera_id": camera.id,
+                        "camera_name": camera.location_name,
+                        "camera_district": camera.district,
+                        "camera_county": camera.county,
+                        "camera_route": camera.route,
+                        "camera_lat": camera.latitude,
+                        "camera_lng": camera.longitude,
+                        "source": "stream_monitor",
+                        "stream_interval": status.stream_interval,
+                    },
+                )
+
+                if det.label == "accident":
+                    ticket_service.create_ticket_from_event(
+                        db,
+                        event,
+                        location_info=f"{camera.location_name} | {camera.county}, {camera.route}",
+                    )
+                    status.accidents_found += 1
+
+                status.detections_found += 1
+                status.recent_detections.append({
+                    "label": det.label,
+                    "confidence": det.confidence,
+                    "severity": det.severity,
+                    "evidence_path": evidence_path,
+                    "timestamp": now.isoformat(),
+                    "camera_name": camera.location_name,
+                    "event_id": event.id,
+                })
+
+                logger.info(
+                    "Stream monitor detection: %s (%.0f%%) at %s",
+                    det.label,
+                    det.confidence * 100,
+                    camera.location_name,
+                )
+        except Exception as e:
+            logger.error("Failed to save stream monitor detection: %s", e)
             db.rollback()
         finally:
             db.close()

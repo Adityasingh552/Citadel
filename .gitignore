@@ -63,3 +63,4 @@ backend/runtime_settings.json
 *.bin
 *.safetensors
 .cache/
+start.py

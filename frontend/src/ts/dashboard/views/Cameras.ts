@@ -2,6 +2,7 @@
 
 import { api } from '../../api.js';
 import { Toast } from '../../utils/toast.js';
+import { VideoPlayer } from '../../utils/videoPlayer.js';
 import type { CameraInfo, MonitorStatus, MonitorStatusResponse } from '../../types/index.js';
 
 declare const L: any; // Leaflet global from CDN
@@ -16,6 +17,11 @@ let cachedMonitors: MonitorStatusResponse | null = null;
 let snapshotLoading = false;
 let mainContainer: HTMLElement | null = null;
 
+// Video player state for detail view
+let detailVideoPlayer: VideoPlayer | null = null;
+let detailFeedMode: 'snapshot' | 'video' = 'snapshot';
+let detailCameraId: string | null = null;
+
 export function renderCameras(container: HTMLElement): void {
     mainContainer = container;
     currentView = 'list';
@@ -25,6 +31,9 @@ export function renderCameras(container: HTMLElement): void {
 export function destroyCameras(): void {
     cleanupTimers();
     destroyDetailMap();
+    destroyDetailVideoPlayer();
+    detailFeedMode = 'snapshot';
+    detailCameraId = null;
     mainContainer = null;
     cachedMonitors = null;
     currentView = 'list';
@@ -150,6 +159,8 @@ function renderCameraCard(m: MonitorStatus): string {
     const statusClass = m.active ? 'cameras-card--active' : 'cameras-card--stopped';
     const statusLabel = m.active ? 'Active' : 'Stopped';
     const statusBadge = m.active ? 'badge--success' : 'badge--muted';
+    const modeLabel = m.stream_mode ? 'Stream' : 'Snapshot';
+    const intervalLabel = m.stream_mode ? `${m.stream_interval}s` : `${m.poll_interval}s`;
 
     return `
         <div class="cameras-card ${statusClass}">
@@ -157,6 +168,7 @@ function renderCameraCard(m: MonitorStatus): string {
                 <div class="cameras-card__title">
                     <span class="cameras-card__name">${m.camera_name || 'Unknown Camera'}</span>
                     <span class="badge ${statusBadge}">${statusLabel}</span>
+                    ${m.stream_mode ? '<span class="badge badge--info stream-mode-badge">Stream</span>' : ''}
                 </div>
                 <div class="cameras-card__location">${m.camera_location || '--'}</div>
             </div>
@@ -183,7 +195,11 @@ function renderCameraCard(m: MonitorStatus): string {
                     <span class="cameras-card__stat-label">Skipped</span>
                 </div>
                 <div class="cameras-card__stat">
-                    <span class="cameras-card__stat-value">${m.poll_interval}s</span>
+                    <span class="cameras-card__stat-value">${modeLabel}</span>
+                    <span class="cameras-card__stat-label">Mode</span>
+                </div>
+                <div class="cameras-card__stat">
+                    <span class="cameras-card__stat-value">${intervalLabel}</span>
                     <span class="cameras-card__stat-label">Interval</span>
                 </div>
             </div>
@@ -262,14 +278,20 @@ async function openDetail(
                     <!-- Live snapshot -->
                     <div class="card">
                         <div class="card__header">
-                            <h3 class="card__title">Live Snapshot</h3>
-                            <div class="feed-video__live-badge">
-                                <span class="feed-video__live-dot"></span>
-                                LIVE
+                            <h3 class="card__title">Live Feed</h3>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div class="feed-mode-toggle" id="camdetail-feed-toggle" style="display:none;">
+                                    <button class="feed-mode-toggle__btn feed-mode-toggle__btn--active" data-mode="snapshot">Snapshot</button>
+                                    <button class="feed-mode-toggle__btn" data-mode="video">Video</button>
+                                </div>
+                                <div class="feed-video__live-badge">
+                                    <span class="feed-video__live-dot"></span>
+                                    LIVE
+                                </div>
                             </div>
                         </div>
                         <div class="card__body">
-                            <div class="camdetail__snapshot-wrap">
+                            <div class="camdetail__snapshot-wrap" id="camdetail-feed-container">
                                 <img id="camdetail-snapshot" class="camdetail__snapshot" alt="Camera snapshot" />
                                 <div class="camdetail__snapshot-overlay" id="camdetail-overlay">
                                     <span>Loading snapshot...</span>
@@ -318,6 +340,8 @@ async function openDetail(
 
     // Bind back button
     document.getElementById('camdetail-back-btn')?.addEventListener('click', () => {
+        destroyDetailVideoPlayer();
+        detailFeedMode = 'snapshot';
         if (mainContainer) renderList(mainContainer);
     });
 
@@ -326,6 +350,17 @@ async function openDetail(
         await stopCamera(cameraId);
         // Refresh detail status
         refreshDetailStatus(cameraId);
+    });
+
+    // Bind feed mode toggle
+    detailCameraId = cameraId;
+    detailFeedMode = 'snapshot';
+    document.getElementById('camdetail-feed-toggle')?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('[data-mode]') as HTMLElement | null;
+        if (!btn) return;
+        const mode = btn.dataset.mode as 'snapshot' | 'video';
+        if (mode === detailFeedMode) return;
+        switchDetailFeedMode(mode, cameraId);
     });
 
     // Render initial stats & detections
@@ -395,6 +430,10 @@ async function fetchCameraInfoAndInitMap(cameraId: string): Promise<void> {
 
         // Init Leaflet map
         initDetailMap(cam.latitude, cam.longitude, cam.location_name);
+
+        // Show feed mode toggle only if camera has a video stream
+        const feedToggle = document.getElementById('camdetail-feed-toggle');
+        if (feedToggle) feedToggle.style.display = cam.stream_url ? '' : 'none';
     } catch (err) {
         console.error('Failed to fetch camera info:', err);
         const infoEl = document.getElementById('camdetail-info');
@@ -519,9 +558,20 @@ function renderDetailStats(m: MonitorStatus): void {
             <span class="camdetail__stat-label">Skipped (Unchanged)</span>
         </div>
         <div class="camdetail__stat">
-            <span class="camdetail__stat-value">${m.poll_interval}s</span>
-            <span class="camdetail__stat-label">Poll Interval</span>
+            <span class="camdetail__stat-value">${m.stream_mode ? 'Stream' : 'Snapshot'}</span>
+            <span class="camdetail__stat-label">Source Mode</span>
         </div>
+        ${m.stream_mode ? `
+            <div class="camdetail__stat">
+                <span class="camdetail__stat-value">${m.stream_interval}s</span>
+                <span class="camdetail__stat-label">Stream Interval</span>
+            </div>
+        ` : `
+            <div class="camdetail__stat">
+                <span class="camdetail__stat-value">${m.poll_interval}s</span>
+                <span class="camdetail__stat-label">Poll Interval</span>
+            </div>
+        `}
         ${m.error ? `
             <div class="camdetail__stat camdetail__stat--full">
                 <span class="camdetail__stat-value camdetail__stat-value--danger" style="font-size:var(--text-xs);">${m.error}</span>
@@ -561,6 +611,115 @@ function renderDetailDetections(m: MonitorStatus): void {
         </div>
     `).join('');
 }
+
+// ══════════════════════════════════════════════
+//  DETAIL VIDEO PLAYER
+// ══════════════════════════════════════════════
+
+/** Switch between snapshot and video in the detail view. */
+function switchDetailFeedMode(mode: 'snapshot' | 'video', cameraId: string): void {
+    detailFeedMode = mode;
+    updateDetailFeedToggleUI();
+
+    const container = document.getElementById('camdetail-feed-container');
+    if (!container) return;
+
+    if (mode === 'video') {
+        // Hide snapshot elements
+        const img = document.getElementById('camdetail-snapshot') as HTMLImageElement;
+        const overlay = document.getElementById('camdetail-overlay');
+        if (img) img.style.display = 'none';
+        if (overlay) overlay.style.display = 'none';
+
+        // Stop snapshot auto-refresh
+        if (detailSnapshotTimer) {
+            clearInterval(detailSnapshotTimer);
+            detailSnapshotTimer = null;
+        }
+
+        // Start video player
+        startDetailVideoPlayer(cameraId, container);
+    } else {
+        // Destroy video player
+        destroyDetailVideoPlayer();
+
+        // Show snapshot elements
+        const img = document.getElementById('camdetail-snapshot') as HTMLImageElement;
+        if (img) img.style.display = '';
+
+        // Reload snapshot and restart auto-refresh
+        loadDetailSnapshot(cameraId);
+        detailSnapshotTimer = window.setInterval(() => {
+            loadDetailSnapshot(cameraId);
+        }, 30000);
+    }
+}
+
+/** Start the HLS video player in the detail view. */
+async function startDetailVideoPlayer(cameraId: string, container: HTMLElement): Promise<void> {
+    // Remove any existing messages
+    container.querySelector('.video-player-message')?.remove();
+    container.querySelector('.video-player-loading')?.remove();
+
+    // Show loading
+    const loading = document.createElement('div');
+    loading.className = 'video-player-loading';
+    loading.innerHTML = '<span>Connecting to stream...</span>';
+    container.appendChild(loading);
+
+    // Get proxied stream URL
+    const streamInfo = await api.getStreamInfo(cameraId);
+    if (!streamInfo || !streamInfo.has_stream) {
+        loading.remove();
+        const msg = document.createElement('div');
+        msg.className = 'video-player-message';
+        msg.textContent = 'Video stream is not available for this camera.';
+        container.appendChild(msg);
+        return;
+    }
+
+    loading.remove();
+
+    detailVideoPlayer = new VideoPlayer({
+        container: container,
+        hlsUrl: streamInfo.proxy_url,
+        className: 'hls-video-player camdetail__snapshot',
+        onError: (message) => {
+            const msg = document.createElement('div');
+            msg.className = 'video-player-message';
+            msg.textContent = message;
+            container.appendChild(msg);
+        },
+    });
+}
+
+/** Destroy the detail view video player. */
+function destroyDetailVideoPlayer(): void {
+    if (detailVideoPlayer) {
+        detailVideoPlayer.destroy();
+        detailVideoPlayer = null;
+    }
+    const container = document.getElementById('camdetail-feed-container');
+    if (container) {
+        container.querySelector('.video-player-message')?.remove();
+        container.querySelector('.video-player-loading')?.remove();
+    }
+}
+
+/** Update the toggle UI in detail view. */
+function updateDetailFeedToggleUI(): void {
+    const toggle = document.getElementById('camdetail-feed-toggle');
+    if (!toggle) return;
+    toggle.querySelectorAll('[data-mode]').forEach(btn => {
+        const el = btn as HTMLElement;
+        if (el.dataset.mode === detailFeedMode) {
+            el.classList.add('feed-mode-toggle__btn--active');
+        } else {
+            el.classList.remove('feed-mode-toggle__btn--active');
+        }
+    });
+}
+
 
 // ══════════════════════════════════════════════
 //  SHARED ACTIONS

@@ -73,6 +73,8 @@ class ActiveMonitor(Base):
 
     camera_id = Column(String, primary_key=True)
     started_at = Column(DateTime, default=_utcnow, nullable=False)
+    stream_mode = Column(Boolean, default=False, nullable=False)
+    stream_interval = Column(Integer, default=10, nullable=False)
 
     def __repr__(self) -> str:
-        return f"<ActiveMonitor camera={self.camera_id}>"
+        return f"<ActiveMonitor camera={self.camera_id} stream_mode={self.stream_mode}>"

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.database import create_tables
+from app.database import create_tables, run_migrations
 from app.config import get_settings
 from app.detection.detector import AccidentDetector
 from app.detection.processor import VideoProcessor
@@ -32,6 +32,9 @@ async def lifespan(app: FastAPI):
     # Create database tables
     logger.info("Initializing database...")
     create_tables()
+
+    # Run schema migrations (add new columns to existing tables)
+    run_migrations()
 
     # Create required directories
     os.makedirs(config.evidence_dir, exist_ok=True)

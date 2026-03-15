@@ -2,6 +2,7 @@
 
 import { api } from '../../api.js';
 import { Toast } from '../../utils/toast.js';
+import { VideoPlayer } from '../../utils/videoPlayer.js';
 import type { CameraInfo, MonitorStatus, MonitorStatusResponse } from '../../types/index.js';
 
 declare const L: any; // Leaflet global from CDN
@@ -14,6 +15,10 @@ let monitorStatuses: MonitorStatus[] = [];
 let statusPollTimer: number | null = null;
 let snapshotRefreshTimer: number | null = null;
 let snapshotLoading = false;
+
+// Video player state
+let videoPlayer: VideoPlayer | null = null;
+let feedMode: 'snapshot' | 'video' = 'snapshot';
 
 // Marker layer — all markers live in here for fast add/remove
 let markerLayer: any = null;
@@ -87,17 +92,23 @@ export function renderMonitor(container: HTMLElement): void {
                     </div>
                 </div>
 
-                <!-- Manual feed -->
+                <!-- Live Feed -->
                 <div class="card" id="live-feed-card" style="display:none;">
                     <div class="card__header">
-                        <h3 class="card__title">Manual Feed</h3>
-                        <div class="feed-video__live-badge">
-                            <span class="feed-video__live-dot"></span>
-                            LIVE
+                        <h3 class="card__title">Live Feed</h3>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div class="feed-mode-toggle" id="feed-mode-toggle" style="display:none;">
+                                <button class="feed-mode-toggle__btn feed-mode-toggle__btn--active" data-mode="snapshot">Snapshot</button>
+                                <button class="feed-mode-toggle__btn" data-mode="video">Video</button>
+                            </div>
+                            <div class="feed-video__live-badge">
+                                <span class="feed-video__live-dot"></span>
+                                LIVE
+                            </div>
                         </div>
                     </div>
                     <div class="card__body">
-                        <div class="monitor-feed-container">
+                        <div class="monitor-feed-container" id="feed-container">
                             <img id="camera-snapshot" class="monitor-snapshot" alt="Camera feed" />
                             <div class="monitor-feed-overlay" id="feed-overlay" style="display:none;">
                                 <span class="monitor-feed-overlay__text">Loading...</span>
@@ -116,6 +127,20 @@ export function renderMonitor(container: HTMLElement): void {
                             <div class="monitor-freq-info" id="camera-freq-info">
                                 <span class="monitor-freq-info__label">Update Frequency:</span>
                                 <span class="monitor-freq-info__value" id="camera-freq-val">—</span>
+                            </div>
+                            <div class="stream-config" id="stream-config" style="display:none;">
+                                <label class="stream-config__checkbox-label">
+                                    <input type="checkbox" id="stream-mode-checkbox" />
+                                    <span>Use video stream for analysis</span>
+                                </label>
+                                <div class="stream-config__interval" id="stream-interval-group" style="display:none;">
+                                    <label class="stream-config__interval-label" for="stream-interval-input">
+                                        Frame capture interval (seconds):
+                                    </label>
+                                    <input type="number" id="stream-interval-input" class="stream-config__interval-input"
+                                           min="3" max="120" value="10" step="1" />
+                                    <span class="stream-config__interval-hint">3–120s (lower = more frames, more CPU)</span>
+                                </div>
                             </div>
                             <div class="monitor-actions">
                                 <button class="btn btn--primary" id="start-monitor-btn">Start Monitoring</button>
@@ -184,7 +209,7 @@ function initMap(): void {
 function bindEvents(): void {
     document.getElementById('district-select')?.addEventListener('change', (e) => {
         const district = (e.target as HTMLSelectElement).value || undefined;
-        
+
         if (district && DISTRICT_BOUNDS[district] && map) {
             // Zoom to district — pins stay on map
             const { center, zoom } = DISTRICT_BOUNDS[district];
@@ -207,6 +232,22 @@ function bindEvents(): void {
 
     document.getElementById('start-monitor-btn')?.addEventListener('click', startMonitoring);
     document.getElementById('stop-monitor-btn')?.addEventListener('click', stopMonitoring);
+
+    // Feed mode toggle (Snapshot / Video)
+    document.getElementById('feed-mode-toggle')?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('[data-mode]') as HTMLElement | null;
+        if (!btn) return;
+        const mode = btn.dataset.mode as 'snapshot' | 'video';
+        if (mode === feedMode) return;
+        switchFeedMode(mode);
+    });
+
+    // Stream mode checkbox — show/hide interval input
+    document.getElementById('stream-mode-checkbox')?.addEventListener('change', (e) => {
+        const checked = (e.target as HTMLInputElement).checked;
+        const intervalGroup = document.getElementById('stream-interval-group');
+        if (intervalGroup) intervalGroup.style.display = checked ? '' : 'none';
+    });
 }
 
 async function loadCameras(): Promise<void> {
@@ -237,6 +278,7 @@ function getActiveMonitorIds(): Set<string> {
 
 // Marker style constants
 const STYLE_DEFAULT = { radius: 5, color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.8, weight: 1 };
+const STYLE_HAS_STREAM = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
 const STYLE_SELECTED = { radius: 7, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 };
 const STYLE_MONITORED = { radius: 7, color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1, weight: 2 };
 
@@ -252,13 +294,18 @@ function plotCamerasOnMap(cams: CameraInfo[]): void {
     cams.forEach(cam => {
         const isSelected = selectedCamera?.id === cam.id;
         const isMonitored = activeIds.has(cam.id);
-        const style = isMonitored ? STYLE_MONITORED : isSelected ? STYLE_SELECTED : STYLE_DEFAULT;
+        const hasStream = Boolean(cam.stream_url);
+        const style = isMonitored ? STYLE_MONITORED
+            : isSelected ? STYLE_SELECTED
+            : hasStream ? STYLE_HAS_STREAM
+            : STYLE_DEFAULT;
 
         const marker = L.circleMarker([cam.latitude, cam.longitude], style)
             .bindPopup(`
                 <strong>${cam.location_name}</strong><br/>
                 ${cam.county} &bull; ${cam.route}<br/>
                 <em>District ${cam.district} — ${cam.district_name}</em>
+                ${hasStream ? '<br/><span style="color:#a855f7;">Video Stream Available</span>' : ''}
                 ${isMonitored ? '<br/><strong style="color:#ef4444;">Monitoring Active</strong>' : ''}
             `);
 
@@ -284,7 +331,12 @@ function updateMarkerStyles(): void {
     markerMap.forEach((marker, camId) => {
         const isSelected = selectedCamera?.id === camId;
         const isMonitored = activeIds.has(camId);
-        const style = isMonitored ? STYLE_MONITORED : isSelected ? STYLE_SELECTED : STYLE_DEFAULT;
+        const cam = cameras.find(c => c.id === camId);
+        const hasStream = Boolean(cam?.stream_url);
+        const style = isMonitored ? STYLE_MONITORED
+            : isSelected ? STYLE_SELECTED
+            : hasStream ? STYLE_HAS_STREAM
+            : STYLE_DEFAULT;
         marker.setStyle(style);
         marker.setRadius(style.radius);
     });
@@ -320,8 +372,141 @@ function filterCamerasOnMap(query: string): void {
     });
 }
 
+/** Switch between snapshot and video feed modes. */
+function switchFeedMode(mode: 'snapshot' | 'video'): void {
+    feedMode = mode;
+    updateFeedModeToggleUI();
+
+    if (!selectedCamera) return;
+
+    const container = document.getElementById('feed-container');
+    if (!container) return;
+
+    if (mode === 'video') {
+        // Hide snapshot elements
+        const img = document.getElementById('camera-snapshot') as HTMLImageElement;
+        const overlay = document.getElementById('feed-overlay');
+        if (img) img.style.display = 'none';
+        if (overlay) overlay.style.display = 'none';
+
+        // Stop snapshot auto-refresh while video is playing
+        if (snapshotRefreshTimer) {
+            clearInterval(snapshotRefreshTimer);
+            snapshotRefreshTimer = null;
+        }
+
+        // Start video player
+        startVideoPlayer(selectedCamera, container);
+    } else {
+        // Destroy video player
+        destroyVideoPlayer();
+
+        // Show snapshot elements
+        const img = document.getElementById('camera-snapshot') as HTMLImageElement;
+        if (img) img.style.display = '';
+
+        // Reload snapshot and restart auto-refresh
+        loadSnapshot(selectedCamera);
+        const refreshMs = Math.max(selectedCamera.update_frequency * 60 * 1000, 30000);
+        if (snapshotRefreshTimer) clearInterval(snapshotRefreshTimer);
+        snapshotRefreshTimer = window.setInterval(() => {
+            if (selectedCamera) loadSnapshotIfChanged(selectedCamera);
+        }, refreshMs);
+    }
+}
+
+/** Start the HLS video player for a camera. */
+async function startVideoPlayer(cam: CameraInfo, container: HTMLElement): Promise<void> {
+    // Remove any existing video player message
+    container.querySelector('.video-player-message')?.remove();
+    container.querySelector('.video-player-loading')?.remove();
+
+    // Check if camera has a stream
+    if (!cam.stream_url) {
+        const msg = document.createElement('div');
+        msg.className = 'video-player-message';
+        msg.textContent = 'No video stream available for this camera.';
+        container.appendChild(msg);
+        return;
+    }
+
+    // Show loading state
+    const loading = document.createElement('div');
+    loading.className = 'video-player-loading';
+    loading.innerHTML = '<span>Connecting to stream...</span>';
+    container.appendChild(loading);
+
+    // Get proxied stream URL
+    const streamInfo = await api.getStreamInfo(cam.id);
+    if (!streamInfo || !streamInfo.has_stream) {
+        loading.remove();
+        const msg = document.createElement('div');
+        msg.className = 'video-player-message';
+        msg.textContent = 'Video stream is not available for this camera.';
+        container.appendChild(msg);
+        return;
+    }
+
+    // Remove loading indicator
+    loading.remove();
+
+    // Create video player
+    videoPlayer = new VideoPlayer({
+        container: container,
+        hlsUrl: streamInfo.proxy_url,
+        className: 'hls-video-player monitor-snapshot',
+        onError: (message) => {
+            const msg = document.createElement('div');
+            msg.className = 'video-player-message';
+            msg.textContent = message;
+            container.appendChild(msg);
+        },
+        onPlaying: () => {
+            // Stream is playing
+        },
+    });
+}
+
+/** Destroy the active video player. */
+function destroyVideoPlayer(): void {
+    if (videoPlayer) {
+        videoPlayer.destroy();
+        videoPlayer = null;
+    }
+    // Remove any message elements
+    const container = document.getElementById('feed-container');
+    if (container) {
+        container.querySelector('.video-player-message')?.remove();
+        container.querySelector('.video-player-loading')?.remove();
+    }
+}
+
+/** Update the toggle button UI to reflect current mode. */
+function updateFeedModeToggleUI(): void {
+    const toggle = document.getElementById('feed-mode-toggle');
+    if (!toggle) return;
+
+    toggle.querySelectorAll('[data-mode]').forEach(btn => {
+        const el = btn as HTMLElement;
+        if (el.dataset.mode === feedMode) {
+            el.classList.add('feed-mode-toggle__btn--active');
+        } else {
+            el.classList.remove('feed-mode-toggle__btn--active');
+        }
+    });
+}
+
 function selectCamera(cam: CameraInfo): void {
     selectedCamera = cam;
+
+    // Destroy any active video player when switching cameras
+    destroyVideoPlayer();
+    feedMode = 'snapshot';
+    updateFeedModeToggleUI();
+
+    // Show/hide feed mode toggle based on whether camera has a video stream
+    const feedToggle = document.getElementById('feed-mode-toggle');
+    if (feedToggle) feedToggle.style.display = cam.stream_url ? '' : 'none';
 
     // Check if this camera is already being monitored
     const camStatus = monitorStatuses.find(s => s.camera_id === cam.id && s.active);
@@ -357,6 +542,17 @@ function selectCamera(cam: CameraInfo): void {
     // Update frequency display
     const freqVal = document.getElementById('camera-freq-val');
     if (freqVal) freqVal.textContent = `Every ${cam.update_frequency} min`;
+
+    // Show/hide stream config based on whether camera has a video stream
+    const streamConfig = document.getElementById('stream-config');
+    if (streamConfig) {
+        streamConfig.style.display = cam.stream_url ? '' : 'none';
+    }
+    // Reset stream mode controls when switching cameras
+    const streamCheckbox = document.getElementById('stream-mode-checkbox') as HTMLInputElement;
+    if (streamCheckbox) streamCheckbox.checked = false;
+    const intervalGroup = document.getElementById('stream-interval-group');
+    if (intervalGroup) intervalGroup.style.display = 'none';
 
     // Update start/stop button visibility based on whether this camera is monitored
     updateControlButtons(camStatus);
@@ -466,10 +662,21 @@ async function startMonitoring(): Promise<void> {
         return;
     }
 
+    // Read stream mode configuration
+    const streamCheckbox = document.getElementById('stream-mode-checkbox') as HTMLInputElement;
+    const streamIntervalInput = document.getElementById('stream-interval-input') as HTMLInputElement;
+    const useStreamMode = streamCheckbox?.checked ?? false;
+    const streamInterval = streamIntervalInput ? parseInt(streamIntervalInput.value, 10) || 10 : 10;
+
     try {
         const token = api.getToken();
+        const params = new URLSearchParams({
+            camera_id: selectedCamera.id,
+            stream_mode: String(useStreamMode),
+            stream_interval: String(streamInterval),
+        });
         const res = await fetch(
-            `/api/cameras/monitor/start?camera_id=${selectedCamera.id}`,
+            `/api/cameras/monitor/start?${params.toString()}`,
             {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -558,8 +765,10 @@ async function pollAllMonitorStatuses(): Promise<void> {
             if (camStatus && camStatus.active) {
                 updateMonitorUI(camStatus);
                 updateControlButtons(camStatus);
-                // Refresh snapshot during active monitoring
-                loadSnapshotIfChanged(selectedCamera);
+                // Refresh snapshot during active monitoring (skip if viewing video)
+                if (feedMode !== 'video') {
+                    loadSnapshotIfChanged(selectedCamera);
+                }
             } else {
                 updateControlButtons(undefined);
             }
@@ -647,6 +856,21 @@ function updateMonitorUI(status: MonitorStatus): void {
                 <div class="monitor-stat__value">${status.skipped_unchanged}</div>
                 <div class="monitor-stat__label">Skipped (Unchanged)</div>
             </div>
+            <div class="monitor-stat">
+                <div class="monitor-stat__value">${status.stream_mode ? 'Stream' : 'Snapshot'}</div>
+                <div class="monitor-stat__label">Source Mode</div>
+            </div>
+            ${status.stream_mode ? `
+                <div class="monitor-stat">
+                    <div class="monitor-stat__value">${status.stream_interval}s</div>
+                    <div class="monitor-stat__label">Stream Interval</div>
+                </div>
+            ` : `
+                <div class="monitor-stat">
+                    <div class="monitor-stat__value">${status.poll_interval}s</div>
+                    <div class="monitor-stat__label">Poll Interval</div>
+                </div>
+            `}
             ${status.error ? `
                 <div class="monitor-stat monitor-stat--full">
                     <div class="monitor-stat__value monitor-stat__value--danger" style="font-size: var(--text-xs);">
@@ -750,6 +974,8 @@ export function destroyMonitor(): void {
     if (snapshotRefreshTimer) clearInterval(snapshotRefreshTimer);
     snapshotRefreshTimer = null;
     snapshotLoading = false;
+    destroyVideoPlayer();
+    feedMode = 'snapshot';
     if (map) {
         map.remove();
         map = null;
