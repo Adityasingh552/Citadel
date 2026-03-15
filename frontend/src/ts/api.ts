@@ -163,12 +163,6 @@ class ApiClient {
         return `${this.baseUrl}/cameras/${cameraId}/snapshot`;
     }
 
-    /** Get the HLS stream proxy URL for a camera (for use with hls.js). */
-    getHlsStreamUrl(proxyPath: string): string {
-        // proxyPath is the full path like /api/cameras/hls-proxy/D7/CCTV-196.stream/playlist.m3u8
-        return proxyPath;
-    }
-
     /** Fetch stream info for a camera. Returns proxy URL if stream is available. */
     async getStreamInfo(cameraId: string): Promise<{ has_stream: boolean; proxy_url: string } | null> {
         try {

@@ -19,7 +19,7 @@ from app.database import SessionLocal
 from app.detection.detector import AccidentDetector, Detection
 from app.detection.processor import VideoProcessor
 from app.models import ActiveMonitor
-from app.services.camera_service import CameraService, CameraInfo
+from app.services.camera_service import CameraService, CameraInfo, StreamCapture
 from app.services import event_service, ticket_service
 from app.routes.settings import get_runtime_settings
 
@@ -74,6 +74,7 @@ class _CameraMonitor:
     thread: threading.Thread
     stop_event: threading.Event
     status: MonitorStatus
+    stream_capture: Optional[StreamCapture] = None
 
 
 class MonitorService:
@@ -141,6 +142,21 @@ class MonitorService:
             stream_interval=stream_interval,
         )
 
+        # Start persistent stream capture if in stream mode
+        capture: Optional[StreamCapture] = None
+        if stream_mode and camera.stream_url:
+            capture = StreamCapture(camera.stream_url)
+            if not capture.start():
+                logger.warning(
+                    "Failed to start stream capture for %s, falling back to snapshot mode",
+                    camera.location_name,
+                )
+                capture = None
+                stream_mode = False
+                status.stream_mode = False
+                poll_seconds = max(camera.update_frequency * 60, 30)
+                status.poll_interval = poll_seconds
+
         stop_event = threading.Event()
         thread = threading.Thread(
             target=self._monitor_loop,
@@ -154,6 +170,7 @@ class MonitorService:
             thread=thread,
             stop_event=stop_event,
             status=status,
+            stream_capture=capture,
         )
 
         with self._lock:
@@ -181,6 +198,12 @@ class MonitorService:
                 return {"active": False, "camera_id": camera_id}
 
         monitor.stop_event.set()
+
+        # Stop the persistent stream capture (kills ffmpeg process)
+        if monitor.stream_capture:
+            monitor.stream_capture.stop()
+            monitor.stream_capture = None
+
         if monitor.thread.is_alive():
             monitor.thread.join(timeout=10)
 
@@ -335,14 +358,18 @@ class MonitorService:
 
         Supports two modes:
         - Snapshot mode (default): Polls the snapshot URL, checks for changes, then analyzes.
-        - Stream mode: Grabs a frame from the HLS video stream every `stream_interval` seconds.
+        - Stream mode: Reads the latest frame from the persistent StreamCapture.
         """
         settings = get_settings()
 
         while not stop_event.is_set():
             try:
                 if status.stream_mode:
-                    self._process_stream_frame(camera, settings, status, stop_event)
+                    # Get the StreamCapture from the monitor object
+                    with self._lock:
+                        monitor = self._monitors.get(camera.id)
+                    capture = monitor.stream_capture if monitor else None
+                    self._process_stream_frame(camera, settings, status, stop_event, capture)
                 else:
                     self._process_single_frame(camera, settings, status, stop_event)
             except Exception as e:
@@ -449,6 +476,9 @@ class MonitorService:
                     "camera_name": camera.location_name,
                     "event_id": event.id,
                 })
+                # Trim to prevent unbounded memory growth
+                if len(status.recent_detections) > 50:
+                    status.recent_detections = status.recent_detections[-50:]
 
                 logger.info(
                     "Monitor detection: %s (%.0f%%) at %s",
@@ -468,8 +498,9 @@ class MonitorService:
         settings,
         status: MonitorStatus,
         stop_event: threading.Event,
+        capture: Optional[StreamCapture] = None,
     ):
-        """Grab one frame from the HLS video stream and run detection."""
+        """Read the latest frame from the persistent StreamCapture and run detection."""
         if not self._camera_service or not self._processor:
             logger.error("Monitor dependencies not initialized")
             return
@@ -478,11 +509,30 @@ class MonitorService:
             status.error = "No stream URL available for this camera"
             return
 
-        # Grab a frame from the HLS stream via ffmpeg
-        pil_image = self._camera_service.grab_frame_from_stream(camera.stream_url)
+        if not capture or not capture.is_alive:
+            # Attempt auto-restart if capture died
+            if capture and not capture.is_alive:
+                logger.warning("Stream capture died for %s, attempting restart...", camera.location_name)
+                capture.stop()
+                if capture.start():
+                    logger.info("Stream capture restarted successfully for %s", camera.location_name)
+                    status.error = None
+                    # Give ffmpeg a moment to buffer the first frame
+                    time.sleep(3)
+                else:
+                    status.error = f"Stream capture restart failed: {capture.error}"
+                    logger.error("Stream capture restart failed for %s", camera.location_name)
+                    return
+            else:
+                status.error = "No stream capture available"
+                logger.warning("No stream capture for %s", camera.location_name)
+                return
+
+        # Read the latest frame (instant — no network I/O)
+        pil_image = capture.get_latest_frame()
         if pil_image is None:
-            logger.warning("Failed to grab stream frame for %s", camera.location_name)
-            status.error = "Failed to grab frame from video stream"
+            # No frame yet (stream may still be buffering)
+            logger.debug("No frame available yet from stream capture for %s", camera.location_name)
             return
 
         # Clear any previous error on success
@@ -556,6 +606,9 @@ class MonitorService:
                     "camera_name": camera.location_name,
                     "event_id": event.id,
                 })
+                # Trim to prevent unbounded memory growth
+                if len(status.recent_detections) > 50:
+                    status.recent_detections = status.recent_detections[-50:]
 
                 logger.info(
                     "Stream monitor detection: %s (%.0f%%) at %s",

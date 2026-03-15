@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
 import time
 import hashlib
 from dataclasses import dataclass, field
@@ -87,6 +88,193 @@ class CameraCache:
     @property
     def expired(self) -> bool:
         return (time.time() - self.last_fetched) > CAMERA_CACHE_TTL
+
+
+class StreamCapture:
+    """Persistent HLS stream capture using a long-running ffmpeg process.
+
+    Keeps a single ffmpeg process alive that reads the HLS stream and outputs
+    raw RGB frames to stdout. A background reader thread continuously consumes
+    frames and keeps only the latest one in memory, so ``get_latest_frame()``
+    returns instantly without any network I/O.
+
+    Lifecycle:
+        capture = StreamCapture(stream_url, width, height)
+        capture.start()          # spawns ffmpeg + reader thread
+        frame = capture.get_latest_frame()  # PIL Image or None
+        capture.stop()           # kills ffmpeg, joins reader thread
+    """
+
+    def __init__(self, stream_url: str, width: int = 0, height: int = 0):
+        self._stream_url = stream_url
+        self._width = width
+        self._height = height
+        self._process: Optional[subprocess.Popen] = None
+        self._reader_thread: Optional[threading.Thread] = None
+        self._latest_frame: Optional[bytes] = None  # raw JPEG bytes
+        self._frame_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._started = False
+        self._error: Optional[str] = None
+
+    @property
+    def is_alive(self) -> bool:
+        return (
+            self._started
+            and not self._stop_event.is_set()
+            and self._process is not None
+            and self._process.poll() is None
+        )
+
+    @property
+    def error(self) -> Optional[str]:
+        return self._error
+
+    def start(self) -> bool:
+        """Start the ffmpeg process and reader thread. Returns True on success."""
+        if self._started:
+            return self.is_alive
+
+        if not shutil.which("ffmpeg"):
+            self._error = "ffmpeg not installed"
+            logger.warning("StreamCapture: ffmpeg is not installed")
+            return False
+
+        try:
+            # ffmpeg outputs a continuous stream of JPEG frames.
+            # -re is NOT used so ffmpeg reads as fast as the stream provides.
+            # -fps_mode vfr keeps variable frame rate output.
+            # Each JPEG is delimited by SOI (FFD8) and EOI (FFD9) markers.
+            self._process = subprocess.Popen(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel", "error",
+                    "-i", self._stream_url,
+                    "-f", "image2pipe",
+                    "-vcodec", "mjpeg",
+                    "-q:v", "5",          # quality (2=best, 31=worst); 5 is good for analysis
+                    "-fps_mode", "vfr",
+                    "pipe:1",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=10 * 1024 * 1024,  # 10MB buffer
+            )
+        except Exception as e:
+            self._error = f"Failed to start ffmpeg: {e}"
+            logger.error("StreamCapture: failed to start ffmpeg: %s", e)
+            return False
+
+        self._stop_event.clear()
+        self._started = True
+        self._error = None
+
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop,
+            daemon=True,
+            name=f"stream-reader-{id(self)}",
+        )
+        self._reader_thread.start()
+
+        logger.info("StreamCapture: started persistent ffmpeg for %s", self._stream_url)
+        return True
+
+    def stop(self) -> None:
+        """Stop the ffmpeg process and reader thread."""
+        self._stop_event.set()
+        self._started = False
+
+        if self._process:
+            try:
+                self._process.kill()
+                self._process.wait(timeout=5)
+            except Exception:
+                pass
+            self._process = None
+
+        if self._reader_thread and self._reader_thread.is_alive():
+            self._reader_thread.join(timeout=5)
+        self._reader_thread = None
+
+        with self._frame_lock:
+            self._latest_frame = None
+
+        logger.info("StreamCapture: stopped for %s", self._stream_url)
+
+    def get_latest_frame(self) -> Optional[Image.Image]:
+        """Return the most recently captured frame as a PIL Image, or None."""
+        with self._frame_lock:
+            jpeg_bytes = self._latest_frame
+
+        if not jpeg_bytes:
+            return None
+
+        try:
+            return Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
+        except Exception as e:
+            logger.warning("StreamCapture: failed to decode frame: %s", e)
+            return None
+
+    def _reader_loop(self) -> None:
+        """Background thread: read JPEG frames from ffmpeg stdout.
+
+        ffmpeg in image2pipe + mjpeg mode outputs a stream of concatenated
+        JPEG images. Each JPEG starts with SOI marker (0xFFD8) and ends with
+        EOI marker (0xFFD9). We accumulate bytes and split on these markers.
+        """
+        JPEG_SOI = b'\xff\xd8'
+        JPEG_EOI = b'\xff\xd9'
+        buf = bytearray()
+        stdout = self._process.stdout
+
+        while not self._stop_event.is_set():
+            try:
+                chunk = stdout.read(65536)  # 64KB chunks
+                if not chunk:
+                    # ffmpeg closed stdout — process probably died
+                    if not self._stop_event.is_set():
+                        self._error = "ffmpeg process ended unexpectedly"
+                        logger.warning("StreamCapture: ffmpeg stdout closed unexpectedly")
+                    break
+
+                buf.extend(chunk)
+
+                # Extract the latest complete JPEG from the buffer
+                while True:
+                    soi = buf.find(JPEG_SOI)
+                    if soi == -1:
+                        buf.clear()
+                        break
+
+                    # Discard any garbage before SOI
+                    if soi > 0:
+                        del buf[:soi]
+                        soi = 0
+
+                    # Look for EOI after SOI
+                    eoi = buf.find(JPEG_EOI, soi + 2)
+                    if eoi == -1:
+                        # Incomplete frame — wait for more data
+                        break
+
+                    # Complete JPEG: SOI to EOI+2
+                    frame_end = eoi + 2
+                    jpeg_data = bytes(buf[soi:frame_end])
+                    del buf[:frame_end]
+
+                    # Store as latest (overwrite previous — we only keep the newest)
+                    if len(jpeg_data) > 1000:  # sanity check: valid JPEG is >1KB
+                        with self._frame_lock:
+                            self._latest_frame = jpeg_data
+
+            except Exception as e:
+                if not self._stop_event.is_set():
+                    self._error = f"Reader error: {e}"
+                    logger.warning("StreamCapture: reader error: %s", e)
+                break
+
+        logger.debug("StreamCapture: reader loop exited for %s", self._stream_url)
 
 
 class CameraService:
