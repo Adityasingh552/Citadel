@@ -21,6 +21,7 @@ let mainContainer: HTMLElement | null = null;
 let detailVideoPlayer: VideoPlayer | null = null;
 let detailFeedMode: 'snapshot' | 'video' = 'snapshot';
 let detailCameraId: string | null = null;
+let detailCameraStreamUrl: string | null = null;
 
 export function renderCameras(container: HTMLElement): void {
     mainContainer = container;
@@ -34,6 +35,7 @@ export function destroyCameras(): void {
     destroyDetailVideoPlayer();
     detailFeedMode = 'snapshot';
     detailCameraId = null;
+    detailCameraStreamUrl = null;
     mainContainer = null;
     cachedMonitors = null;
     currentView = 'list';
@@ -432,10 +434,12 @@ async function fetchCameraInfoAndInitMap(cameraId: string): Promise<void> {
         initDetailMap(cam.latitude, cam.longitude, cam.location_name);
 
         // Show feed mode toggle only if camera has a video stream
+        detailCameraStreamUrl = cam.stream_url || null;
         const feedToggle = document.getElementById('camdetail-feed-toggle');
         if (feedToggle) feedToggle.style.display = cam.stream_url ? '' : 'none';
     } catch (err) {
         console.error('Failed to fetch camera info:', err);
+        detailCameraStreamUrl = null;
         const infoEl = document.getElementById('camdetail-info');
         if (infoEl) infoEl.innerHTML = '<p class="text-muted">Camera details unavailable.</p>';
     }
@@ -667,9 +671,8 @@ async function startDetailVideoPlayer(cameraId: string, container: HTMLElement):
     loading.innerHTML = '<span>Connecting to stream...</span>';
     container.appendChild(loading);
 
-    // Get proxied stream URL
-    const streamInfo = await api.getStreamInfo(cameraId);
-    if (!streamInfo || !streamInfo.has_stream) {
+    // Use direct stream URL loaded from camera info
+    if (!detailCameraStreamUrl) {
         loading.remove();
         const msg = document.createElement('div');
         msg.className = 'video-player-message';
@@ -682,7 +685,7 @@ async function startDetailVideoPlayer(cameraId: string, container: HTMLElement):
 
     detailVideoPlayer = new VideoPlayer({
         container: container,
-        hlsUrl: streamInfo.proxy_url,
+        hlsUrl: detailCameraStreamUrl,
         className: 'hls-video-player camdetail__snapshot',
         onError: (message) => {
             const msg = document.createElement('div');

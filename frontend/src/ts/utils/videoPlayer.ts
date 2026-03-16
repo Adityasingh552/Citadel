@@ -11,7 +11,7 @@ import { api } from '../api.js';
 export interface VideoPlayerOptions {
     /** The container element to render the video player into. */
     container: HTMLElement;
-    /** The proxied HLS playlist URL (from stream-info endpoint). */
+    /** The HLS playlist URL to play. */
     hlsUrl: string;
     /** Optional CSS class to add to the video element. */
     className?: string;
@@ -45,18 +45,21 @@ export class VideoPlayer {
         this.video.autoplay = this.options.autoplay !== false;
         this.video.controls = true;
 
-        // Build the full URL with auth token as query param for hls.js XHR requests
+        // Use the provided HLS URL as-is.
         const hlsUrl = this.options.hlsUrl;
+        const isCrossOrigin = this.isCrossOrigin(hlsUrl);
 
         if (Hls.isSupported()) {
             this.hls = new Hls({
                 enableWorker: true,
                 lowLatencyMode: true,
                 xhrSetup: (xhr: XMLHttpRequest) => {
-                    // Attach JWT auth header to all HLS requests
-                    const token = api.getToken();
-                    if (token) {
-                        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                    // Avoid auth headers on cross-origin streams (can trigger CORS preflight failures).
+                    if (!isCrossOrigin) {
+                        const token = api.getToken();
+                        if (token) {
+                            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                        }
                     }
                 },
                 // Retry settings for live streams
@@ -142,5 +145,14 @@ export class VideoPlayer {
     /** Check if the player is still active. */
     isActive(): boolean {
         return !this.destroyed && this.video !== null;
+    }
+
+    private isCrossOrigin(url: string): boolean {
+        try {
+            const parsed = new URL(url, window.location.origin);
+            return parsed.origin !== window.location.origin;
+        } catch {
+            return false;
+        }
     }
 }

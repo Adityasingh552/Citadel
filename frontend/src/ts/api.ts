@@ -163,12 +163,15 @@ class ApiClient {
         return `${this.baseUrl}/cameras/${cameraId}/snapshot`;
     }
 
-    /** Fetch stream info for a camera. Returns proxy URL if stream is available. */
-    async getStreamInfo(cameraId: string): Promise<{ has_stream: boolean; proxy_url: string } | null> {
+    /** Fetch stream info for a camera. Returns direct stream URL when available. */
+    async getStreamInfo(cameraId: string): Promise<{ has_stream: boolean; stream_url: string } | null> {
         try {
-            return await this.get<{ has_stream: boolean; proxy_url: string }>(
-                `/cameras/${cameraId}/stream-info`
-            );
+            const data = await this.get<{ camera: { stream_url: string } }>(`/cameras/${cameraId}/info`);
+            const streamUrl = data.camera?.stream_url || '';
+            return {
+                has_stream: Boolean(streamUrl),
+                stream_url: streamUrl,
+            };
         } catch {
             return null;
         }

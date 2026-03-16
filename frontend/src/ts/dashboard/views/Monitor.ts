@@ -436,24 +436,13 @@ async function startVideoPlayer(cam: CameraInfo, container: HTMLElement): Promis
     loading.innerHTML = '<span>Connecting to stream...</span>';
     container.appendChild(loading);
 
-    // Get proxied stream URL
-    const streamInfo = await api.getStreamInfo(cam.id);
-    if (!streamInfo || !streamInfo.has_stream) {
-        loading.remove();
-        const msg = document.createElement('div');
-        msg.className = 'video-player-message';
-        msg.textContent = 'Video stream is not available for this camera.';
-        container.appendChild(msg);
-        return;
-    }
-
     // Remove loading indicator
     loading.remove();
 
     // Create video player
     videoPlayer = new VideoPlayer({
         container: container,
-        hlsUrl: streamInfo.proxy_url,
+        hlsUrl: cam.stream_url,
         className: 'hls-video-player monitor-snapshot',
         onError: (message) => {
             const msg = document.createElement('div');
