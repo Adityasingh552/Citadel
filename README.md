@@ -5,13 +5,13 @@
 ## Features
 
 - **AI Detection** — Fine-tuned DETR model for accidents & vehicles with bounding-box evidence
-- **Live Camera Monitoring** — Connect to 12 Caltrans CCTV districts (~thousands of cameras) for continuous AI-powered surveillance
-- **Video & Image Processing** — Frame-by-frame analysis with configurable sampling
-- **Automated Ticketing** — Violation tickets with status workflow (`issued → pending → resolved`)
+- **Live Camera Monitoring** — Connect to 12 Caltrans CCTV districts (~thousands of cameras) with HLS video & snapshot support
+- **Automated Ticketing** — Auto-generate violation tickets with an `issued → pending → resolved` workflow
+- **Multi-Channel Alerts** — Automated notifications for severe accidents via Twilio (voice calls), Email, and Webhooks with configurable cooldowns
 - **Interactive Map** — Leaflet-based map showing camera locations across all California districts
 - **JWT Authentication** — Admin login with bcrypt + JWT
-- **Dashboard** — Real-time stats, event history, upload with live progress, camera monitoring, and per-camera detail views
-- **Runtime Settings** — Adjust thresholds and toggles on the fly
+- **Dashboard** — Live monitoring, real-time activity feed, evidence gallery, and comprehensive statistics
+- **Runtime Settings** — Adjust AI confidence thresholds and alert toggles on the fly
 
 ## Tech Stack
 
@@ -60,11 +60,12 @@ Frontend → `http://localhost:3000` · API → `http://localhost:8000` · Docs 
 
 ## Recent Updates
 
-**Latest commits:**
+**Latest updates:**
 
-- **Twilio Narration** — Announces demo address during manual event uploads for improved accessibility
-- **Camera Stream Resilience** — Exponential backoff retry logic + URL validation for robust auto-restart on connection failures
-- **Emergency Voice Alerts** — Twilio integration sends automated voice calls for high-severity accidents with configurable cooldown and event source tracking
+- **Pause & Resume Monitoring** — Temporarily pause individual camera analysis threads without losing state
+- **Evidence Gallery & Activity Feed** — Dedicated UI views for browsing detection snapshots and tracking real-time events
+- **Multi-Channel Emergency Alerts** — Automated notifications via Twilio (voice calls), Email, and Webhooks for severe accidents, featuring configurable cooldowns and dispatch tracking
+- **Camera Stream Resilience** — HLS Proxy support, exponential backoff, and URL validation for robust ffmpeg stream capture
 
 ## Configuration
 
@@ -83,7 +84,7 @@ Environment variables in `backend/.env`:
 | `JWT_SECRET`           | *(required)*                               | Secret key for JWT signing   |
 | `JWT_EXPIRY_HOURS`     | `24`                                       | Token expiration (hours)     |
 
-Runtime detection settings (confidence, toggles, frame interval) can be changed live via the Settings API or dashboard — persisted in `backend/runtime_settings.json`.
+Runtime detection settings (confidence thresholds, alert toggles, etc.) can be changed live via the Settings API or dashboard — persisted in `backend/runtime_settings.json`.
 
 ## API
 
@@ -96,6 +97,8 @@ All endpoints except `/api/health` and `/api/auth/login` require `Authorization:
 | `GET`    | `/api/health`                   | Health check                         |
 | `POST`   | `/api/auth/login`              | Admin login → JWT                    |
 | `GET`    | `/api/events`                  | List detection events                |
+| `GET`    | `/api/events/feed`             | Real-time activity feed (SSE/polling)|
+| `GET`    | `/api/events/evidence`         | Fetch evidence gallery               |
 | `GET`    | `/api/tickets`                 | List tickets                         |
 | `GET`    | `/api/tickets/{id}`            | Get a single ticket                  |
 | `PATCH`  | `/api/tickets/{id}`            | Update ticket status                 |
@@ -129,6 +132,8 @@ All endpoints except `/api/health` and `/api/auth/login` require `Authorization:
 | Method   | Endpoint                                  | Description                                |
 |----------|-------------------------------------------|--------------------------------------------|
 | `POST`   | `/api/cameras/monitor/start`             | Start auto-monitoring a camera feed         |
+| `POST`   | `/api/cameras/monitor/{camera_id}/pause` | Pause an active monitor             |
+| `POST`   | `/api/cameras/monitor/{camera_id}/resume`| Resume a paused monitor             |
 | `POST`   | `/api/cameras/monitor/{camera_id}/stop`  | Stop monitoring a specific camera           |
 | `POST`   | `/api/cameras/monitor/stop`              | Stop all active monitoring sessions         |
 | `GET`    | `/api/cameras/monitor/status`            | Get status for all monitors                 |

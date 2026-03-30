@@ -144,6 +144,24 @@ function renderMonitorList(data: MonitorStatusResponse): void {
         });
     });
 
+    // Bind pause buttons
+    grid.querySelectorAll('[data-pause-camera]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cameraId = (e.currentTarget as HTMLElement).dataset.pauseCamera!;
+            pauseCamera(cameraId);
+        });
+    });
+
+    // Bind resume buttons
+    grid.querySelectorAll('[data-resume-camera]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cameraId = (e.currentTarget as HTMLElement).dataset.resumeCamera!;
+            resumeCamera(cameraId);
+        });
+    });
+
     // Bind View buttons -> open detail view
     grid.querySelectorAll('[data-view-camera]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -159,8 +177,12 @@ function renderMonitorList(data: MonitorStatusResponse): void {
 function renderCameraCard(m: MonitorStatus): string {
     const duration = m.started_at ? getTimeSince(m.started_at) : '--';
     const statusClass = m.active ? 'cameras-card--active' : 'cameras-card--stopped';
-    const statusLabel = m.active ? 'Active' : 'Stopped';
-    const statusBadge = m.active ? 'badge--success' : 'badge--muted';
+    let statusLabel = m.active ? 'Active' : 'Stopped';
+    let statusBadge = m.active ? 'badge--success' : 'badge--muted';
+    if (m.active && m.paused) {
+        statusLabel = 'Paused';
+        statusBadge = 'badge--warning';
+    }
     const modeLabel = m.stream_mode ? 'Stream' : 'Snapshot';
     const intervalLabel = m.stream_mode ? `${m.stream_interval}s` : `${m.poll_interval}s`;
 
@@ -229,6 +251,11 @@ function renderCameraCard(m: MonitorStatus): string {
             <div class="cameras-card__actions">
                 <button class="btn btn--sm btn--outline" data-view-camera="${m.camera_id}">View</button>
                 ${m.active ? `
+                    ${m.paused ? `
+                        <button class="btn btn--sm btn--success" data-resume-camera="${m.camera_id}">Resume</button>
+                    ` : `
+                        <button class="btn btn--sm btn--warning" data-pause-camera="${m.camera_id}">Pause</button>
+                    `}
                     <button class="btn btn--sm btn--danger" data-stop-camera="${m.camera_id}">Stop</button>
                 ` : ''}
             </div>
@@ -249,8 +276,12 @@ async function openDetail(
     destroyDetailMap();
     currentView = 'detail';
 
-    const statusLabel = monitor.active ? 'Active' : 'Stopped';
-    const statusBadge = monitor.active ? 'badge--success' : 'badge--muted';
+    let statusLabel = monitor.active ? 'Active' : 'Stopped';
+    let statusBadge = monitor.active ? 'badge--success' : 'badge--muted';
+    if (monitor.active && monitor.paused) {
+        statusLabel = 'Paused';
+        statusBadge = 'badge--warning';
+    }
 
     container.innerHTML = `
         <div class="camdetail">
@@ -258,9 +289,9 @@ async function openDetail(
                 <button class="btn btn--sm btn--outline" id="camdetail-back-btn">&larr; Back to Cameras</button>
                 <div class="camdetail__topbar-right">
                     <span class="badge ${statusBadge}" id="camdetail-status-badge">${statusLabel}</span>
-                    ${monitor.active ? `
-                        <button class="btn btn--sm btn--danger" id="camdetail-stop-btn">Stop Monitoring</button>
-                    ` : ''}
+                    <button class="btn btn--sm btn--warning" id="camdetail-pause-btn" style="display:${monitor.active && !monitor.paused ? '' : 'none'}">Pause</button>
+                    <button class="btn btn--sm btn--success" id="camdetail-resume-btn" style="display:${monitor.active && monitor.paused ? '' : 'none'}">Resume</button>
+                    <button class="btn btn--sm btn--danger" id="camdetail-stop-btn" style="display:${monitor.active ? '' : 'none'}">Stop Monitoring</button>
                 </div>
             </div>
 
@@ -354,6 +385,16 @@ async function openDetail(
         refreshDetailStatus(cameraId);
     });
 
+    document.getElementById('camdetail-pause-btn')?.addEventListener('click', async () => {
+        await pauseCamera(cameraId);
+        refreshDetailStatus(cameraId);
+    });
+
+    document.getElementById('camdetail-resume-btn')?.addEventListener('click', async () => {
+        await resumeCamera(cameraId);
+        refreshDetailStatus(cameraId);
+    });
+
     // Bind feed mode toggle
     detailCameraId = cameraId;
     detailFeedMode = 'snapshot';
@@ -386,7 +427,11 @@ async function openDetail(
 
 async function fetchCameraInfoAndInitMap(cameraId: string): Promise<void> {
     try {
-        const data = await api.get<{ camera: CameraInfo }>(`/cameras/${cameraId}/info`);
+        const data = await api.get<{ camera: CameraInfo }>(
+            `/cameras/${cameraId}/info`,
+            undefined,
+            { ttlMs: 5 * 60 * 1000 } // 5 minutes cache
+        );
         const cam = data.camera;
 
         // Render camera info
@@ -516,19 +561,28 @@ async function refreshDetailStatus(cameraId: string): Promise<void> {
         // Update badge
         const badge = document.getElementById('camdetail-status-badge');
         if (badge) {
-            badge.textContent = status.active ? 'Active' : 'Stopped';
-            badge.className = `badge ${status.active ? 'badge--success' : 'badge--muted'}`;
+            let label = status.active ? 'Active' : 'Stopped';
+            let bclass = status.active ? 'badge--success' : 'badge--muted';
+            if (status.active && status.paused) {
+                label = 'Paused';
+                bclass = 'badge--warning';
+            }
+            badge.textContent = label;
+            badge.className = `badge ${bclass}`;
         }
 
         // Update detection count
         const countBadge = document.getElementById('camdetail-det-count');
         if (countBadge) countBadge.textContent = String(status.detections_found);
 
-        // Show/hide stop button
+        // Show/hide action buttons
         const stopBtn = document.getElementById('camdetail-stop-btn');
-        if (stopBtn) {
-            stopBtn.style.display = status.active ? '' : 'none';
-        }
+        const pauseBtn = document.getElementById('camdetail-pause-btn');
+        const resumeBtn = document.getElementById('camdetail-resume-btn');
+
+        if (stopBtn) stopBtn.style.display = status.active ? '' : 'none';
+        if (pauseBtn) pauseBtn.style.display = status.active && !status.paused ? '' : 'none';
+        if (resumeBtn) resumeBtn.style.display = status.active && status.paused ? '' : 'none';
     } catch (err) {
         console.error('Detail status refresh failed:', err);
     }
@@ -740,6 +794,36 @@ async function stopCamera(cameraId: string): Promise<void> {
         if (currentView === 'list') loadMonitors();
     } catch (err: any) {
         Toast.show(err.message || 'Failed to stop', 'error');
+    }
+}
+
+async function pauseCamera(cameraId: string): Promise<void> {
+    try {
+        const token = api.getToken();
+        const res = await fetch(`/api/cameras/monitor/${cameraId}/pause`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to pause monitoring');
+        Toast.show('Camera monitoring paused', 'info');
+        if (currentView === 'list') loadMonitors();
+    } catch (err: any) {
+        Toast.show(err.message || 'Failed to pause', 'error');
+    }
+}
+
+async function resumeCamera(cameraId: string): Promise<void> {
+    try {
+        const token = api.getToken();
+        const res = await fetch(`/api/cameras/monitor/${cameraId}/resume`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to resume monitoring');
+        Toast.show('Camera monitoring resumed', 'success');
+        if (currentView === 'list') loadMonitors();
+    } catch (err: any) {
+        Toast.show(err.message || 'Failed to resume', 'error');
     }
 }
 
