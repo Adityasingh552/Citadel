@@ -58,7 +58,7 @@ class VideoProcessor:
     def process_video(
         self,
         video_path: str,
-        frame_interval: int | None = None,
+        frame_interval: int = 30,
         confidence_threshold: float | None = None,
         allowed_labels: set[str] | None = None,
         on_progress: "None | (lambda cur, total: None)" = None,
@@ -67,7 +67,7 @@ class VideoProcessor:
 
         Args:
             video_path: Path to the video file.
-            frame_interval: Process every Nth frame. Defaults to config value.
+            frame_interval: Process every Nth frame. Defaults to 30.
             confidence_threshold: Override detector threshold for this run.
             allowed_labels: If set, only keep detections with these labels.
             on_progress: Optional callback(current_frame, total_frames).
@@ -75,7 +75,7 @@ class VideoProcessor:
         Returns:
             VideoProcessingOutput with all frame detections.
         """
-        interval = frame_interval or self.settings.frame_interval
+        interval = frame_interval
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():

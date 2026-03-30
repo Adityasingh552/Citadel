@@ -115,7 +115,6 @@ async def detect_video(
         result = await asyncio.to_thread(
             processor.process_video,
             upload_path,
-            frame_interval=rt["frame_interval"],
             confidence_threshold=rt["confidence_threshold"],
             allowed_labels=allowed_labels if allowed_labels else None,
             on_progress=lambda cur, tot: _update_progress(job_id, cur, tot),
@@ -130,7 +129,7 @@ async def detect_video(
     events_created = 0
     tickets_created = 0
     all_detections: list[DetectionResult] = []
-    frame_interval = rt["frame_interval"]
+    frame_interval = 30
 
     for frame_det in result.frame_detections:
         for det in frame_det.detections:

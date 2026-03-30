@@ -94,7 +94,6 @@ export interface AppSettings {
     confidence_threshold: number;
     detect_accidents: boolean;
     detect_vehicles: boolean;
-    frame_interval: number;
 }
 
 export interface ChartDataPoint {

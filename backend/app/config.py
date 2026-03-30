@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     detect_vehicles: bool = True
 
     # Processing
-    frame_interval: int = 30  # Process every Nth frame
-
     # Auth — all required, no defaults
     admin_username: str
     admin_password: str

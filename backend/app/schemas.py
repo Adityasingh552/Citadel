@@ -115,14 +115,12 @@ class SettingsOut(BaseModel):
     confidence_threshold: float
     detect_accidents: bool
     detect_vehicles: bool
-    frame_interval: int
 
 
 class SettingsUpdate(BaseModel):
     confidence_threshold: Optional[float] = None
     detect_accidents: Optional[bool] = None
     detect_vehicles: Optional[bool] = None
-    frame_interval: Optional[int] = None
 
 
 # --- Alert Logs ---

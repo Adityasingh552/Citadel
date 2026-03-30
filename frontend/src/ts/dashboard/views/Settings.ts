@@ -20,7 +20,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     confidence_threshold: 0.7,
     detect_accidents: true,
     detect_vehicles: true,
-    frame_interval: 30,
   };
 
   const notifs = notifications || {
@@ -45,19 +44,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
               min="0" max="100" value="${Math.round(conf.confidence_threshold * 100)}" />
             <span id="conf-value" style="font-weight: 600; width: 40px; text-align: right;">
               ${Math.round(conf.confidence_threshold * 100)}%
-            </span>
-          </div>
-        </div>
-        <div class="settings-row">
-          <div>
-            <div class="settings-row__label">Frame Interval</div>
-            <div class="settings-row__desc">Process every Nth frame</div>
-          </div>
-          <div style="display: flex; align-items: center; gap: var(--space-3);">
-            <input type="range" class="settings-slider" id="frame-slider"
-              min="1" max="120" value="${conf.frame_interval}" />
-            <span id="frame-value" style="font-weight: 600; width: 40px; text-align: right;">
-              ${conf.frame_interval}
             </span>
           </div>
         </div>
@@ -184,12 +170,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     confValue.textContent = confSlider.value + '%';
   });
 
-  const frameSlider = document.getElementById('frame-slider') as HTMLInputElement;
-  const frameValue = document.getElementById('frame-value')!;
-  frameSlider.addEventListener('input', () => {
-    frameValue.textContent = frameSlider.value;
-  });
-
   // Save
   document.getElementById('save-settings')?.addEventListener('click', async () => {
     const accidents = (document.getElementById('toggle-accidents') as HTMLInputElement).checked;
@@ -198,7 +178,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     try {
       await api.put('/settings', {
         confidence_threshold: parseInt(confSlider.value) / 100,
-        frame_interval: parseInt(frameSlider.value),
         detect_accidents: accidents,
         detect_vehicles: vehicles,
       });
@@ -236,7 +215,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     try {
       await api.put('/settings', {
         confidence_threshold: 0.7,
-        frame_interval: 30,
         detect_accidents: true,
         detect_vehicles: true,
       });

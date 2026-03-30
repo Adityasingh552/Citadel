@@ -60,9 +60,6 @@ def get_runtime_settings() -> dict:
         "detect_vehicles": overrides.get(
             "detect_vehicles", settings.detect_vehicles
         ),
-        "frame_interval": overrides.get(
-            "frame_interval", settings.frame_interval
-        ),
     }
 
 
@@ -82,9 +79,6 @@ async def get_current_settings(_admin: str = Depends(get_current_admin)):
         detect_vehicles=overrides.get(
             "detect_vehicles", settings.detect_vehicles
         ),
-        frame_interval=overrides.get(
-            "frame_interval", settings.frame_interval
-        ),
     )
 
 
@@ -101,8 +95,6 @@ async def update_settings(update: SettingsUpdate, _admin: str = Depends(get_curr
         overrides["detect_accidents"] = update.detect_accidents
     if update.detect_vehicles is not None:
         overrides["detect_vehicles"] = update.detect_vehicles
-    if update.frame_interval is not None:
-        overrides["frame_interval"] = update.frame_interval
     _save_overrides(overrides)
 
     return await get_current_settings()
