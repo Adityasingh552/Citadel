@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 class MonitorStatus:
     """Current state of one camera's monitoring session."""
     active: bool = False
+    paused: bool = False
     camera_id: Optional[str] = None
     camera_name: str = ""
     camera_location: str = ""
@@ -49,6 +50,7 @@ class MonitorStatus:
     def to_dict(self) -> dict:
         return {
             "active": self.active,
+            "paused": self.paused,
             "camera_id": self.camera_id,
             "camera_name": self.camera_name,
             "camera_location": self.camera_location,
@@ -101,7 +103,7 @@ class MonitorService:
 
     # ── Public API ──
 
-    def start(self, camera: CameraInfo, stream_mode: bool = False, stream_interval: int = 10) -> dict:
+    def start(self, camera: CameraInfo, stream_mode: bool = False, stream_interval: int = 10, paused: bool = False) -> dict:
         """Start monitoring a camera. If already monitored, returns existing status.
 
         Args:
@@ -132,6 +134,7 @@ class MonitorService:
 
         status = MonitorStatus(
             active=True,
+            paused=paused,
             camera_id=camera.id,
             camera_name=camera.location_name,
             camera_location=f"D{camera.district} — {camera.county}, {camera.route}",
@@ -179,7 +182,7 @@ class MonitorService:
         thread.start()
 
         # Persist to DB so we can restore on restart
-        self._persist_start(camera.id, stream_mode, stream_interval)
+        self._persist_start(camera.id, stream_mode, stream_interval, paused)
 
         mode_label = f"stream (every {stream_interval}s)" if stream_mode else f"snapshot (poll={poll_seconds}s)"
         logger.info(
@@ -215,6 +218,30 @@ class MonitorService:
             self._persist_stop(camera_id)
 
         logger.info("Stopped monitoring camera: %s", monitor.camera.location_name)
+        return monitor.status.to_dict()
+
+    def pause(self, camera_id: str) -> Optional[dict]:
+        """Pause monitoring for a specific camera."""
+        with self._lock:
+            monitor = self._monitors.get(camera_id)
+            if not monitor or not monitor.status.active:
+                return None
+            monitor.status.paused = True
+
+        self._persist_pause(camera_id, True)
+        logger.info("Paused monitoring for camera: %s", monitor.camera.location_name)
+        return monitor.status.to_dict()
+
+    def resume(self, camera_id: str) -> Optional[dict]:
+        """Resume monitoring for a specific camera."""
+        with self._lock:
+            monitor = self._monitors.get(camera_id)
+            if not monitor or not monitor.status.active:
+                return None
+            monitor.status.paused = False
+
+        self._persist_pause(camera_id, False)
+        logger.info("Resumed monitoring for camera: %s", monitor.camera.location_name)
         return monitor.status.to_dict()
 
     def stop_all(self, persist: bool = True) -> int:
@@ -262,7 +289,7 @@ class MonitorService:
 
     # ── DB Persistence ──
 
-    def _persist_start(self, camera_id: str, stream_mode: bool = False, stream_interval: int = 10) -> None:
+    def _persist_start(self, camera_id: str, stream_mode: bool = False, stream_interval: int = 10, paused: bool = False) -> None:
         """Insert a row into active_monitors (idempotent)."""
         db = SessionLocal()
         try:
@@ -272,6 +299,7 @@ class MonitorService:
                     camera_id=camera_id,
                     stream_mode=stream_mode,
                     stream_interval=stream_interval,
+                    paused=paused,
                 ))
                 db.commit()
         except Exception as e:
@@ -288,6 +316,20 @@ class MonitorService:
             db.commit()
         except Exception as e:
             logger.warning("Failed to persist monitor stop for %s: %s", camera_id, e)
+            db.rollback()
+        finally:
+            db.close()
+
+    def _persist_pause(self, camera_id: str, paused: bool) -> None:
+        """Update the paused state in active_monitors."""
+        db = SessionLocal()
+        try:
+            row = db.query(ActiveMonitor).filter_by(camera_id=camera_id).first()
+            if row:
+                row.paused = paused
+                db.commit()
+        except Exception as e:
+            logger.warning("Failed to persist pause state for %s: %s", camera_id, e)
             db.rollback()
         finally:
             db.close()
@@ -318,7 +360,7 @@ class MonitorService:
         try:
             rows = db.query(ActiveMonitor).all()
             camera_ids = [
-                (r.camera_id, bool(r.stream_mode), int(r.stream_interval or 10))
+                (r.camera_id, bool(r.stream_mode), int(r.stream_interval or 10), bool(r.paused))
                 for r in rows
             ]
         except Exception as e:
@@ -332,12 +374,12 @@ class MonitorService:
 
         logger.info("Restoring %d monitors from previous session...", len(camera_ids))
         restored = 0
-        for cid, s_mode, s_interval in camera_ids:
+        for cid, s_mode, s_interval, s_paused in camera_ids:
             camera = self._camera_service.get_camera_by_id(cid)
             if camera:
-                self.start(camera, stream_mode=s_mode, stream_interval=s_interval)
+                self.start(camera, stream_mode=s_mode, stream_interval=s_interval, paused=s_paused)
                 restored += 1
-                logger.info("Restored monitor: %s (stream_mode=%s)", camera.location_name, s_mode)
+                logger.info("Restored monitor: %s (stream_mode=%s, paused=%s)", camera.location_name, s_mode, s_paused)
             else:
                 logger.warning("Cannot restore monitor for unknown camera %s — removing", cid)
                 self._persist_stop(cid)
@@ -363,6 +405,10 @@ class MonitorService:
         settings = get_settings()
 
         while not stop_event.is_set():
+            if status.paused:
+                stop_event.wait(timeout=1.0)
+                continue
+
             try:
                 if status.stream_mode:
                     # Get the StreamCapture from the monitor object

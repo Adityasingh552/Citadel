@@ -143,6 +143,7 @@ export interface MonitorDetection {
 
 export interface MonitorStatus {
     active: boolean;
+    paused: boolean;
     camera_id: string | null;
     camera_name: string;
     camera_location: string;

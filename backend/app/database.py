@@ -63,6 +63,12 @@ def run_migrations():
                     "ALTER TABLE active_monitors ADD COLUMN stream_interval INTEGER NOT NULL DEFAULT 10"
                 ))
 
+            if "paused" not in existing_cols:
+                logger.info("Migration: adding 'paused' column to active_monitors")
+                conn.execute(text(
+                    "ALTER TABLE active_monitors ADD COLUMN paused BOOLEAN NOT NULL DEFAULT 0"
+                ))
+
     # Migration: create alert_logs table if it doesn't exist
     if "alert_logs" not in inspector.get_table_names():
         logger.info("Migration: creating 'alert_logs' table")

@@ -159,6 +159,30 @@ async def stop_monitoring_camera(
     return {"message": "Monitoring stopped", "status": result}
 
 
+@router.post("/monitor/{camera_id}/pause")
+async def pause_monitoring_camera(
+    camera_id: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """Pause monitoring a specific camera."""
+    result = await asyncio.to_thread(monitor_service.pause, camera_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Monitor not found or not active")
+    return {"message": "Monitoring paused", "status": result}
+
+
+@router.post("/monitor/{camera_id}/resume")
+async def resume_monitoring_camera(
+    camera_id: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """Resume monitoring a specific camera."""
+    result = await asyncio.to_thread(monitor_service.resume, camera_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Monitor not found or not active")
+    return {"message": "Monitoring resumed", "status": result}
+
+
 @router.post("/monitor/stop")
 async def stop_all_monitoring(_admin: str = Depends(get_current_admin)):
     """Stop all active monitoring sessions."""

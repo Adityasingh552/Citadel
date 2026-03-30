@@ -144,7 +144,9 @@ export function renderMonitor(container: HTMLElement): void {
                             </div>
                             <div class="monitor-actions">
                                 <button class="btn btn--primary" id="start-monitor-btn">Start Monitoring</button>
-                                <button class="btn btn--danger" id="stop-monitor-btn" style="display:none;">Stop Monitoring</button>
+                                <button class="btn btn--warning" id="pause-monitor-btn" style="display:none;">Pause</button>
+                                <button class="btn btn--success" id="resume-monitor-btn" style="display:none;">Resume</button>
+                                <button class="btn btn--danger" id="stop-monitor-btn" style="display:none;">Stop</button>
                             </div>
                         </div>
                     </div>
@@ -231,6 +233,8 @@ function bindEvents(): void {
     });
 
     document.getElementById('start-monitor-btn')?.addEventListener('click', startMonitoring);
+    document.getElementById('pause-monitor-btn')?.addEventListener('click', pauseMonitoring);
+    document.getElementById('resume-monitor-btn')?.addEventListener('click', resumeMonitoring);
     document.getElementById('stop-monitor-btn')?.addEventListener('click', stopMonitoring);
 
     // Feed mode toggle (Snapshot / Video)
@@ -576,14 +580,26 @@ function selectCamera(cam: CameraInfo): void {
 
 function updateControlButtons(camStatus: MonitorStatus | undefined): void {
     const startBtn = document.getElementById('start-monitor-btn');
+    const pauseBtn = document.getElementById('pause-monitor-btn');
+    const resumeBtn = document.getElementById('resume-monitor-btn');
     const stopBtn = document.getElementById('stop-monitor-btn');
 
     if (camStatus && camStatus.active) {
         if (startBtn) startBtn.style.display = 'none';
         if (stopBtn) stopBtn.style.display = 'inline-flex';
+        
+        if (camStatus.paused) {
+            if (pauseBtn) pauseBtn.style.display = 'none';
+            if (resumeBtn) resumeBtn.style.display = 'inline-flex';
+        } else {
+            if (pauseBtn) pauseBtn.style.display = 'inline-flex';
+            if (resumeBtn) resumeBtn.style.display = 'none';
+        }
     } else {
         if (startBtn) startBtn.style.display = 'inline-flex';
         if (stopBtn) stopBtn.style.display = 'none';
+        if (pauseBtn) pauseBtn.style.display = 'none';
+        if (resumeBtn) resumeBtn.style.display = 'none';
     }
 }
 
@@ -720,6 +736,52 @@ async function stopMonitoring(): Promise<void> {
     }
 }
 
+async function pauseMonitoring(): Promise<void> {
+    if (!selectedCamera) return;
+
+    try {
+        const token = api.getToken();
+        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/pause`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to pause monitoring');
+
+        Toast.show('Monitoring paused', 'info');
+
+        await pollAllMonitorStatuses();
+
+        const camStatus = monitorStatuses.find(s => s.camera_id === selectedCamera?.id);
+        updateControlButtons(camStatus);
+        if (camStatus) updateMonitorUI(camStatus);
+    } catch (err: any) {
+        Toast.show(err.message || 'Failed to pause monitoring', 'error');
+    }
+}
+
+async function resumeMonitoring(): Promise<void> {
+    if (!selectedCamera) return;
+
+    try {
+        const token = api.getToken();
+        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/resume`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to resume monitoring');
+
+        Toast.show('Monitoring resumed', 'success');
+
+        await pollAllMonitorStatuses();
+
+        const camStatus = monitorStatuses.find(s => s.camera_id === selectedCamera?.id);
+        updateControlButtons(camStatus);
+        if (camStatus) updateMonitorUI(camStatus);
+    } catch (err: any) {
+        Toast.show(err.message || 'Failed to resume monitoring', 'error');
+    }
+}
+
 function startStatusPolling(): void {
     stopStatusPolling();
     statusPollTimer = window.setInterval(pollAllMonitorStatuses, 5000);
@@ -796,21 +858,37 @@ async function checkExistingMonitors(): Promise<void> {
 
 function updateMonitorUI(status: MonitorStatus): void {
     const startBtn = document.getElementById('start-monitor-btn');
+    const pauseBtn = document.getElementById('pause-monitor-btn');
+    const resumeBtn = document.getElementById('resume-monitor-btn');
     const stopBtn = document.getElementById('stop-monitor-btn');
     const statusBadge = document.getElementById('status-badge');
 
     if (status.active) {
         if (startBtn) startBtn.style.display = 'none';
         if (stopBtn) stopBtn.style.display = 'inline-flex';
+        
+        if (status.paused) {
+            if (pauseBtn) pauseBtn.style.display = 'none';
+            if (resumeBtn) resumeBtn.style.display = 'inline-flex';
+            if (statusBadge) {
+                statusBadge.textContent = 'Paused';
+                statusBadge.className = 'badge badge--warning';
+            }
+        } else {
+            if (pauseBtn) pauseBtn.style.display = 'inline-flex';
+            if (resumeBtn) resumeBtn.style.display = 'none';
+            if (statusBadge) {
+                statusBadge.textContent = 'Active';
+                statusBadge.className = 'badge badge--success';
+            }
+        }
         show('monitor-status-card');
         show('detections-card');
-        if (statusBadge) {
-            statusBadge.textContent = 'Active';
-            statusBadge.className = 'badge badge--success';
-        }
     } else {
         if (startBtn) startBtn.style.display = 'inline-flex';
         if (stopBtn) stopBtn.style.display = 'none';
+        if (pauseBtn) pauseBtn.style.display = 'none';
+        if (resumeBtn) resumeBtn.style.display = 'none';
         if (statusBadge) {
             statusBadge.textContent = 'Stopped';
             statusBadge.className = 'badge badge--muted';
