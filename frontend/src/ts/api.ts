@@ -54,13 +54,33 @@ class ApiClient {
         }
     }
 
-    async get<T>(path: string, params?: Record<string, string>): Promise<T> {
+    async get<T>(path: string, params?: Record<string, string>, cacheOptions?: { ttlMs: number, force?: boolean }): Promise<T> {
         const url = new URL(this.baseUrl + path, window.location.origin);
         if (params) {
             Object.entries(params).forEach(([k, v]) => {
                 if (v) url.searchParams.set(k, v);
             });
         }
+
+        const cacheKey = `api_cache_${url.toString()}`;
+
+        // Check cache if requested and not forced to bypass
+        if (cacheOptions && !cacheOptions.force) {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.expiry > Date.now()) {
+                        return parsed.data as T;
+                    } else {
+                        localStorage.removeItem(cacheKey); // Clean up expired
+                    }
+                } catch {
+                    localStorage.removeItem(cacheKey); // Clean up invalid JSON
+                }
+            }
+        }
+
         const res = await fetch(url.toString(), {
             headers: this.authHeaders(),
         });
@@ -68,7 +88,22 @@ class ApiClient {
             this.handleUnauthorized(res);
             throw new Error(`API ${res.status}: ${res.statusText}`);
         }
-        return res.json();
+
+        const data = await res.json();
+
+        // Save to cache if requested
+        if (cacheOptions) {
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    data: data,
+                    expiry: Date.now() + cacheOptions.ttlMs
+                }));
+            } catch (err) {
+                console.warn('Failed to cache API response:', err);
+            }
+        }
+
+        return data;
     }
 
     async post<T>(path: string, body?: unknown): Promise<T> {
