@@ -167,6 +167,7 @@ async def detect_video(
                 source_video=file.filename,
                 frame_number=frame_det.frame_number,
                 metadata={"timestamp_sec": frame_det.timestamp_sec},
+                source="manual",
             )
             events_created += 1
 
@@ -275,6 +276,7 @@ async def detect_image(
             evidence_path=evidence_path,
             bbox_data=[det.bbox],
             source_video=file.filename,
+            source="manual",
         )
 
         if det.label == "accident":
@@ -374,6 +376,7 @@ async def detect_images_batch(
                 evidence_path=evidence_path,
                 bbox_data=[det.bbox],
                 source_video=file.filename,
+                source="manual",
             )
             total_events += 1
 

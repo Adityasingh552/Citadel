@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_expiry_hours: int = 24
 
+    # Twilio — emergency voice calls
+    twilio_enabled_manual: bool = False   # trigger calls for manual upload detections
+    twilio_enabled_cctv: bool = False     # trigger calls for live CCTV detections
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""          # US E.164 e.g. +12015551234
+    emergency_contact_number: str = ""   # Indian E.164 e.g. +919876543210
+    twilio_call_cooldown_seconds: int = 300  # minimum gap between calls (default: 5 min)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

@@ -456,6 +456,7 @@ class MonitorService:
                         "camera_lng": camera.longitude,
                         "source": "live_monitor",
                     },
+                    source="cctv",
                 )
 
                 if det.label == "accident":
@@ -586,6 +587,7 @@ class MonitorService:
                         "source": "stream_monitor",
                         "stream_interval": status.stream_interval,
                     },
+                    source="cctv",
                 )
 
                 if det.label == "accident":
