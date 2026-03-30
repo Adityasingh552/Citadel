@@ -513,8 +513,33 @@ class MonitorService:
         if not capture or not capture.is_alive:
             # Attempt auto-restart if capture died
             if capture and not capture.is_alive:
-                logger.warning("Stream capture died for %s, attempting restart...", camera.location_name)
+                from app.services.camera_service import STREAM_MAX_RETRIES, STREAM_MAX_BACKOFF
+                if capture._retry_count >= STREAM_MAX_RETRIES:
+                    status.error = (
+                        f"Stream capture gave up after {STREAM_MAX_RETRIES} retries: {capture.error}"
+                    )
+                    logger.error(
+                        "Stream capture for %s exceeded max retries (%d), stopping stream mode.",
+                        camera.location_name,
+                        STREAM_MAX_RETRIES,
+                    )
+                    return
+
+                backoff = capture._backoff
+                logger.warning(
+                    "Stream capture died for %s (attempt %d/%d), retrying in %.0fs...",
+                    camera.location_name,
+                    capture._retry_count + 1,
+                    STREAM_MAX_RETRIES,
+                    backoff,
+                )
+                time.sleep(backoff)
+
                 capture.stop()
+                # Bump retry counter and back-off before attempting restart
+                capture._retry_count += 1
+                capture._backoff = min(capture._backoff * 2, STREAM_MAX_BACKOFF)
+
                 if capture.start():
                     logger.info("Stream capture restarted successfully for %s", camera.location_name)
                     status.error = None
