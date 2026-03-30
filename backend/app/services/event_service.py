@@ -63,6 +63,7 @@ def create_event(
             make_emergency_call({
                 "event_type": event_type,
                 "severity": severity,
+                "upload_source": source,       # "manual" → says "demo address" in call
                 "source_video": source_video,
                 "camera_id": (metadata or {}).get("camera_id"),
                 "timestamp": event.timestamp.isoformat(),

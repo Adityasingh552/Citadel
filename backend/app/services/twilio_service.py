@@ -30,12 +30,17 @@ def _build_twiml(event_details: dict) -> str:
     """Return TwiML XML that narrates the incident details via <Say>."""
     event_type = event_details.get("event_type", "unknown")
     severity   = event_details.get("severity", "unknown")
-    source     = (
-        event_details.get("source_video")
-        or event_details.get("camera_id")
-        or "unknown source"
-    )
     timestamp  = event_details.get("timestamp", datetime.now(timezone.utc).isoformat())
+
+    # For manual uploads, announce a generic location rather than the filename.
+    # For CCTV events, use the camera identifier.
+    if event_details.get("upload_source") == "manual":
+        source = "demo address"
+    else:
+        source = (
+            event_details.get("camera_id")
+            or "unknown source"
+        )
 
     # Sanitise angle brackets that would break inline XML
     for val in (event_type, severity, source, timestamp):
