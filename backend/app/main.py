@@ -14,7 +14,7 @@ from app.detection.detector import AccidentDetector
 from app.detection.processor import VideoProcessor
 from app.services.camera_service import camera_service
 from app.services.monitor_service import monitor_service
-from app.routes import auth, detection, events, tickets, stats, settings, cameras
+from app.routes import auth, detection, events, tickets, stats, settings, cameras, alerts
 
 # Configure logging
 logging.basicConfig(
@@ -100,6 +100,7 @@ app.include_router(tickets.router)
 app.include_router(stats.router)
 app.include_router(settings.router)
 app.include_router(cameras.router)
+app.include_router(alerts.router)
 
 
 @app.get("/api/health", tags=["system"])

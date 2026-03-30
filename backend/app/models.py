@@ -78,3 +78,23 @@ class ActiveMonitor(Base):
 
     def __repr__(self) -> str:
         return f"<ActiveMonitor camera={self.camera_id} stream_mode={self.stream_mode}>"
+
+
+class AlertLog(Base):
+    """Log of every dispatched notification (Twilio call, email, webhook)."""
+
+    __tablename__ = "alert_logs"
+
+    id = Column(String, primary_key=True, default=_gen_uuid)
+    event_id = Column(String, ForeignKey("events.id"), nullable=False)
+    channel = Column(String, nullable=False)  # 'twilio' | 'email' | 'webhook'
+    status = Column(String, nullable=False)   # 'sent' | 'failed' | 'suppressed'
+    recipient = Column(String, nullable=True)  # phone number, email, webhook URL
+    details = Column(JSON, nullable=True)  # channel-specific response info or error
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+
+    # Relationship
+    event = relationship("Event", backref="alert_logs")
+
+    def __repr__(self) -> str:
+        return f"<AlertLog {self.id[:8]} channel={self.channel} status={self.status}>"

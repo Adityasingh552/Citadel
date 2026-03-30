@@ -1,30 +1,20 @@
 """Twilio emergency voice call service.
 
-Dispatches a fire-and-forget voice call to the configured emergency contact
-when a critical traffic incident is detected. Calls are placed via the Twilio
-REST API using inline TwiML (no external webhook needed).
+Dispatches a voice call to the configured emergency contact when a critical
+traffic incident is detected. Calls are placed via the Twilio REST API
+using inline TwiML (no external webhook needed).
 
-Cooldown:
-    A module-level timestamp prevents calls from being placed more frequently
-    than ``twilio_call_cooldown_seconds`` (default 300 s / 5 min). This avoids
-    flooding the contact when a CCTV feed continuously detects accidents.
+This module has been refactored to serve strictly as a channel sender.
+Cooldown and threading logic are now handled by the notification_service.
 """
 
 from __future__ import annotations
 
 import logging
-import threading
-import time
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-# ── Cooldown state (module-level, shared across all threads) ───────────────
-_cooldown_lock = threading.Lock()
-_last_call_ts: float = 0.0   # epoch seconds of the most recent initiated call
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _build_twiml(event_details: dict) -> str:
     """Return TwiML XML that narrates the incident details via <Say>."""
@@ -32,14 +22,14 @@ def _build_twiml(event_details: dict) -> str:
     severity   = event_details.get("severity", "unknown")
     timestamp  = event_details.get("timestamp", datetime.now(timezone.utc).isoformat())
 
-    # For manual uploads, announce a generic location rather than the filename.
-    # For CCTV events, use the camera identifier.
-    if event_details.get("upload_source") == "manual":
+    # Formulate a source description
+    if event_details.get("upload_source", event_details.get("source", "manual")) == "manual":
         source = "demo address"
     else:
         source = (
-            event_details.get("camera_id")
-            or "unknown source"
+            event_details.get("camera_name")
+            or event_details.get("camera_id")
+            or "unknown CCTV source"
         )
 
     # Sanitise angle brackets that would break inline XML
@@ -66,11 +56,14 @@ def _build_twiml(event_details: dict) -> str:
     )
 
 
-def _do_call(event_details: dict) -> None:
-    """Blocking Twilio REST call — runs inside a daemon thread.
+def make_emergency_call(event_details: dict) -> dict:
+    """Make the Twilio REST call.
 
     Imports twilio lazily so the server starts cleanly even if the package
     is not yet installed or TWILIO_ENABLED_* is False.
+
+    Returns:
+        dict: containing 'success' (bool) and optionally 'sid' or 'error' (str).
     """
     from app.config import get_settings  # deferred to avoid circular imports at module load
     settings = get_settings()
@@ -78,19 +71,19 @@ def _do_call(event_details: dict) -> None:
     try:
         from twilio.rest import Client  # type: ignore[import]
     except ImportError:
-        logger.error(
-            "twilio package is not installed. "
-            "Run: pip install twilio>=9.0"
-        )
-        return
+        err = "twilio package is not installed."
+        logger.error(err)
+        return {"success": False, "error": err}
 
     if not settings.twilio_account_sid or not settings.twilio_auth_token:
-        logger.error("Twilio SID/token not configured — skipping emergency call.")
-        return
+        err = "Twilio SID/token not configured."
+        logger.error(err)
+        return {"success": False, "error": err}
 
     if not settings.twilio_from_number or not settings.emergency_contact_number:
-        logger.error("Twilio from/to numbers not configured — skipping emergency call.")
-        return
+        err = "Twilio from/to numbers not configured."
+        logger.error(err)
+        return {"success": False, "error": err}
 
     try:
         client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
@@ -108,56 +101,7 @@ def _do_call(event_details: dict) -> None:
             event_details.get("event_type"),
             event_details.get("severity"),
         )
+        return {"success": True, "sid": call.sid}
     except Exception as exc:
         logger.error("Emergency call failed: %s", exc)
-
-
-def make_emergency_call(event_details: dict) -> bool:
-    """Dispatch an emergency voice call in a background daemon thread.
-
-    Enforces a per-process cooldown so calls are not placed more frequently
-    than ``twilio_call_cooldown_seconds``.
-
-    Args:
-        event_details: Dict containing at least ``event_type``, ``severity``,
-            and one of ``source_video`` / ``camera_id``, plus ``timestamp``.
-
-    Returns:
-        ``True`` if a call thread was started, ``False`` if suppressed by cooldown.
-    """
-    from app.config import get_settings
-    settings = get_settings()
-
-    global _last_call_ts
-
-    with _cooldown_lock:
-        now = time.monotonic()
-        elapsed = now - _last_call_ts
-        cooldown = settings.twilio_call_cooldown_seconds
-
-        if _last_call_ts > 0 and elapsed < cooldown:
-            remaining = int(cooldown - elapsed)
-            logger.info(
-                "Emergency call suppressed by cooldown (%ds remaining). "
-                "event_type=%s severity=%s",
-                remaining,
-                event_details.get("event_type"),
-                event_details.get("severity"),
-            )
-            return False
-
-        _last_call_ts = now  # reserve the slot before releasing the lock
-
-    t = threading.Thread(
-        target=_do_call,
-        args=(event_details,),
-        daemon=True,
-        name="twilio-emergency-call",
-    )
-    t.start()
-    logger.debug(
-        "Emergency call thread started. event_type=%s severity=%s",
-        event_details.get("event_type"),
-        event_details.get("severity"),
-    )
-    return True
+        return {"success": False, "error": str(exc)}

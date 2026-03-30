@@ -62,3 +62,19 @@ def run_migrations():
                 conn.execute(text(
                     "ALTER TABLE active_monitors ADD COLUMN stream_interval INTEGER NOT NULL DEFAULT 10"
                 ))
+
+    # Migration: create alert_logs table if it doesn't exist
+    if "alert_logs" not in inspector.get_table_names():
+        logger.info("Migration: creating 'alert_logs' table")
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE alert_logs (
+                    id VARCHAR PRIMARY KEY,
+                    event_id VARCHAR NOT NULL REFERENCES events(id),
+                    channel VARCHAR NOT NULL,
+                    status VARCHAR NOT NULL,
+                    recipient VARCHAR,
+                    details JSON,
+                    created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+                )
+            """))

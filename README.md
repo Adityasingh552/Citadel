@@ -58,6 +58,14 @@ Frontend → `http://localhost:3000` · API → `http://localhost:8000` · Docs 
 > Model weights (~170 MB) are downloaded automatically on first startup.
 > Caltrans camera data is cached locally and refreshed automatically.
 
+## Recent Updates
+
+**Latest commits:**
+
+- **Twilio Narration** — Announces demo address during manual event uploads for improved accessibility
+- **Camera Stream Resilience** — Exponential backoff retry logic + URL validation for robust auto-restart on connection failures
+- **Emergency Voice Alerts** — Twilio integration sends automated voice calls for high-severity accidents with configurable cooldown and event source tracking
+
 ## Configuration
 
 Environment variables in `backend/.env`:

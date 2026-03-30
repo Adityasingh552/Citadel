@@ -123,3 +123,64 @@ class SettingsUpdate(BaseModel):
     detect_accidents: Optional[bool] = None
     detect_vehicles: Optional[bool] = None
     frame_interval: Optional[int] = None
+
+
+# --- Alert Logs ---
+
+class AlertLogOut(BaseModel):
+    id: str
+    event_id: str
+    channel: str
+    status: str
+    recipient: Optional[str] = None
+    details: Optional[dict] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AlertLogList(BaseModel):
+    alerts: list[AlertLogOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class AlertStatsOut(BaseModel):
+    total_sent: int
+    total_failed: int
+    total_suppressed: int
+    by_channel: dict  # e.g. {"twilio": {"sent": 5, "failed": 1}, ...}
+
+
+# --- Notification Channels ---
+
+class TwilioChannelConfig(BaseModel):
+    enabled_manual: bool = False
+    enabled_cctv: bool = False
+
+class EmailChannelConfig(BaseModel):
+    enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    from_address: str = ""
+    to_addresses: list[str] = []
+
+class WebhookChannelConfig(BaseModel):
+    enabled: bool = False
+    url: str = ""
+    headers: dict = {}
+
+class NotificationChannelsOut(BaseModel):
+    twilio: TwilioChannelConfig
+    email: EmailChannelConfig
+    webhook: WebhookChannelConfig
+    cooldown_seconds: int = 300
+
+class NotificationChannelsUpdate(BaseModel):
+    twilio: Optional[TwilioChannelConfig] = None
+    email: Optional[EmailChannelConfig] = None
+    webhook: Optional[WebhookChannelConfig] = None
+    cooldown_seconds: Optional[int] = None

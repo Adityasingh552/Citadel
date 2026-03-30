@@ -51,24 +51,25 @@ def create_event(
     db.refresh(event)
     logger.info("Created event: %s", event)
 
-    # ── Twilio emergency call ─────────────────────────────────────────────────
+    # ── Dispatch all configured notifications (Twilio, Email, Webhook) ──
     if event_type == "accident" and severity in _CALL_SEVERITIES:
-        settings = get_settings()
-        enabled = (
-            (source == "manual" and settings.twilio_enabled_manual)
-            or (source == "cctv" and settings.twilio_enabled_cctv)
-        )
-        if enabled:
-            from app.services.twilio_service import make_emergency_call  # lazy import
-            make_emergency_call({
-                "event_type": event_type,
-                "severity": severity,
-                "upload_source": source,       # "manual" → says "demo address" in call
-                "source_video": source_video,
-                "camera_id": (metadata or {}).get("camera_id"),
-                "timestamp": event.timestamp.isoformat(),
-            })
-    # ─────────────────────────────────────────────────────────────────────────
+        from app.services.notification_service import dispatch_alerts  # lazy import
+        # Give dispatcher rich details so it can build complete payloads
+        details_for_alerts = {
+            "event_id": event.id,
+            "event_type": event_type,
+            "severity": severity,
+            "confidence": confidence,
+            "timestamp": event.timestamp.isoformat(),
+            "bbox_data": bbox_data,
+            "evidence_path": evidence_path,
+            "source_video": source_video,
+            "source": source,
+            "camera_id": (metadata or {}).get("camera_id"),
+            "camera_name": (metadata or {}).get("camera_name", ""),
+        }
+        dispatch_alerts(details_for_alerts, db)
+    # ─────────────────────────────────────────────────────────────────
 
     return event
 

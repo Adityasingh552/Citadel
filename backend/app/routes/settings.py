@@ -108,6 +108,43 @@ async def update_settings(update: SettingsUpdate, _admin: str = Depends(get_curr
     return await get_current_settings()
 
 
+@router.get("/notifications", response_model=dict)
+async def get_notification_settings(_admin: str = Depends(get_current_admin)):
+    """Get the current configuration for notification channels."""
+    overrides = _load_overrides()
+    config = overrides.get("notification_channels", {})
+    return {
+        "twilio": config.get("twilio", {"enabled_manual": False, "enabled_cctv": False}),
+        "email": config.get("email", {
+            "enabled": False, "smtp_host": "", "smtp_port": 587,
+            "smtp_user": "", "smtp_password": "", "from_address": "", "to_addresses": []
+        }),
+        "webhook": config.get("webhook", {"enabled": False, "url": "", "headers": {}}),
+        "cooldown_seconds": config.get("cooldown_seconds", 300)
+    }
+
+
+@router.put("/notifications")
+async def update_notification_settings(update: dict, _admin: str = Depends(get_current_admin)):
+    """Update notification channels configuration."""
+    overrides = _load_overrides()
+    channels = overrides.get("notification_channels", {})
+
+    if "twilio" in update:
+        channels["twilio"] = update["twilio"]
+    if "email" in update:
+        channels["email"] = update["email"]
+    if "webhook" in update:
+        channels["webhook"] = update["webhook"]
+    if "cooldown_seconds" in update:
+        channels["cooldown_seconds"] = int(update["cooldown_seconds"])
+
+    overrides["notification_channels"] = channels
+    _save_overrides(overrides)
+
+    return await get_notification_settings()
+
+
 @router.delete("/data")
 async def delete_all_data(db: Session = Depends(get_db), _admin: str = Depends(get_current_admin)):
     """Delete all events, tickets, and evidence files."""
