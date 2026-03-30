@@ -473,4 +473,3 @@ def _log_alert(
     except Exception as exc:
         logger.error("Failed to log alert: %s", exc)
         db.rollback()
-"""
