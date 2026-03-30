@@ -12,9 +12,13 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
         ${renderStatsPlaceholder()}
       </div>
       <div class="overview-grid__charts">
-        <div class="card">
+        <div class="card" style="position: relative;">
           <div class="card__header">
             <span class="card__title">Event Timeline (24h)</span>
+            <div id="alert-indicator-wrapper" style="display:none; align-items:center; gap:6px;">
+               <div class="alert-pulse"></div>
+               <span style="font-size:0.8rem; color:var(--text-muted);">Recent Alerts Dispatched</span>
+            </div>
           </div>
           <div class="chart-container" style="height: 220px;">
             <canvas id="timeline-chart"></canvas>
@@ -43,13 +47,24 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
     </div>
   `;
 
+  let alertStats: any = null;
+  try {
+      alertStats = await api.get('/alerts/stats');
+      
+      // Show indicator if there are recent alerts (simplification: if total_sent > 0, we can refine this)
+      if (alertStats && alertStats.total_sent > 0) {
+          const mEl = document.getElementById('alert-indicator-wrapper');
+          if (mEl) mEl.style.display = 'flex';
+      }
+  } catch(e) {}
+
   // Fetch stats and render
   try {
     const stats = await api.get<SystemStats>('/stats');
-    renderStatsCards(stats);
+    renderStatsCards(stats, alertStats ? alertStats.total_sent : null);
     renderCharts(stats);
   } catch {
-    renderStatsCards(null);
+    renderStatsCards(null, null);
   }
 
   // Fetch recent events
@@ -69,7 +84,7 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
 }
 
 function renderStatsPlaceholder(): string {
-  return ['Total Events', 'Accidents', 'Vehicles', 'Tickets'].map(label => `
+  return ['Total Events', 'Accidents', 'Vehicles', 'Tickets', 'Alerts Sent'].map(label => `
       <div class="stats-card">
         <div class="stats-card__content">
           <div class="stats-card__value">—</div>
@@ -79,7 +94,7 @@ function renderStatsPlaceholder(): string {
     `).join('');
 }
 
-function renderStatsCards(stats: SystemStats | null): void {
+function renderStatsCards(stats: SystemStats | null, alertsCount: number | null): void {
   const el = document.getElementById('stats-row');
   if (!el) return;
 
@@ -89,12 +104,14 @@ function renderStatsCards(stats: SystemStats | null): void {
       { label: 'Accidents', value: formatNumber(stats.total_accidents), color: 'red' },
       { label: 'Vehicles', value: formatNumber(stats.total_vehicles), color: 'amber' },
       { label: 'Tickets', value: formatNumber(stats.total_tickets), color: 'green' },
+      { label: 'Alerts Sent', value: alertsCount !== null ? formatNumber(alertsCount) : '—', color: 'info' },
     ]
     : [
       { label: 'Total Events', value: '—', color: 'blue' },
       { label: 'Accidents', value: '—', color: 'red' },
       { label: 'Vehicles', value: '—', color: 'amber' },
       { label: 'Tickets', value: '—', color: 'green' },
+      { label: 'Alerts Sent', value: '—', color: 'info' },
     ];
 
   el.innerHTML = vals.map(s => `

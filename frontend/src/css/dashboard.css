@@ -1,5 +1,41 @@
 /* Citadel — Dashboard View-Specific Styles */
 
+/* Alert Pulse Animation for recent alerts indicator */
+.alert-pulse {
+  width: 10px;
+  height: 10px;
+  background-color: var(--red);
+  border-radius: 50%;
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.alert-status-badge {
+    text-transform: capitalize;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.alerts-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+
 /* ── Overview Grid ── */
 .overview-grid {
     display: flex;

@@ -3,7 +3,7 @@
 export type EventType = 'accident' | 'vehicle';
 export type Severity = 'high' | 'medium' | 'low';
 export type TicketStatus = 'issued' | 'pending' | 'resolved';
-export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'cameras' | 'settings';
+export type DashboardView = 'overview' | 'events' | 'tickets' | 'alerts' | 'live' | 'monitor' | 'cameras' | 'settings';
 
 export interface BoundingBox {
     x: number;
@@ -165,4 +165,58 @@ export interface MonitorStatusResponse {
     monitors: MonitorStatus[];
     active_count: number;
     total_count: number;
+}
+
+// ── Alerts & Notifications ──
+
+export interface AlertLog {
+    id: string;
+    event_id: string;
+    channel: string;
+    status: 'sent' | 'failed' | 'suppressed' | 'dispatched';
+    recipient: string | null;
+    details: Record<string, unknown> | null;
+    created_at: string;
+}
+
+export interface AlertLogListResponse {
+    alerts: AlertLog[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface AlertStats {
+    total_sent: number;
+    total_failed: number;
+    total_suppressed: number;
+    by_channel: Record<string, { sent: number; failed: number; suppressed: number }>;
+}
+
+export interface TwilioConfig {
+    enabled_manual: boolean;
+    enabled_cctv: boolean;
+}
+
+export interface EmailConfig {
+    enabled: boolean;
+    smtp_host: string;
+    smtp_port: number;
+    smtp_user: string;
+    smtp_password?: string;
+    from_address: string;
+    to_addresses: string[];
+}
+
+export interface WebhookConfig {
+    enabled: boolean;
+    url: string;
+    headers: Record<string, string>;
+}
+
+export interface NotificationChannels {
+    twilio: TwilioConfig;
+    email: EmailConfig;
+    webhook: WebhookConfig;
+    cooldown_seconds: number;
 }

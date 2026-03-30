@@ -167,6 +167,11 @@ function showDetail(event: CitadelEvent): void {
         <div class="event-detail__meta-value">${event.frame_number ?? '—'}</div>
       </div>
     </div>
+    <hr style="border:none;border-top:1px solid var(--card-border);margin:var(--space-4) 0;"/>
+    <div>
+        <h4 style="margin:0 0 var(--space-2); font-size:var(--text-sm);">Dispatched Alerts <span id="event-alerts-count" style="font-weight:normal; color:var(--text-muted);">(Loading...)</span></h4>
+        <div id="event-alerts-list" class="alerts-list"></div>
+    </div>
   `;
   container.appendChild(detail);
 
@@ -174,5 +179,29 @@ function showDetail(event: CitadelEvent): void {
     detail.remove();
     container.classList.add('events-layout--no-detail');
     selectedEvent = null;
+  });
+
+  // Fetch corresponding alerts
+  api.get<any>('/alerts', { event_id: event.id, limit: '10' }).then(res => {
+      const listEl = document.getElementById('event-alerts-list');
+      const countEl = document.getElementById('event-alerts-count');
+      if (!listEl || !countEl) return;
+      
+      const alerts = res.alerts;
+      countEl.textContent = `(${alerts.length})`;
+      
+      if (alerts.length === 0) {
+          listEl.innerHTML = `<span style="font-size:0.8rem; color:var(--text-muted);">No alerts dispatched for this event.</span>`;
+      } else {
+          listEl.innerHTML = alerts.map((a:any) => `
+             <div style="background:var(--content-bg); border-radius:var(--radius-sm); padding:6px; margin-bottom:6px; font-size:0.8rem; display:flex; justify-content:space-between; align-items:center;">
+                 <span style="font-weight:600; text-transform:uppercase; font-size:0.75rem;">${a.channel}</span>
+                 <span class="badge badge--${a.status === 'sent' || a.status === 'dispatched' ? 'success' : (a.status === 'failed' ? 'danger' : 'warning')}">${a.status}</span>
+             </div>
+          `).join('');
+      }
+  }).catch(() => {
+     const countEl = document.getElementById('event-alerts-count');
+     if (countEl) countEl.textContent = `(error)`;
   });
 }
