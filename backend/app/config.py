@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     emergency_contact_number: str = ""   # Indian E.164 e.g. +919876543210
     twilio_call_cooldown_seconds: int = 300  # minimum gap between calls (default: 5 min)
 
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
