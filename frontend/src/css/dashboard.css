@@ -966,8 +966,8 @@
 .stg__btn svg { flex-shrink: 0; }
 
 .stg__btn--primary {
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    color: var(--lg-btn-primary-text);
+    text-shadow: var(--lg-btn-primary-shadow);
     box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular);
 }
 
@@ -1006,8 +1006,8 @@
 }
 
 .stg__btn--danger {
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    color: var(--lg-btn-danger-text);
+    text-shadow: var(--lg-btn-danger-shadow);
     box-shadow: var(--lg-btn-shadow), var(--lg-btn-danger-specular);
 }
 

@@ -239,10 +239,10 @@
   --lg-btn-danger-specular: inset 1px 1px 0 rgba(248, 113, 113, 0.45),
                             inset 0 0 8px rgba(248, 113, 113, 0.15);
 
-  --lg-btn-primary-text:    var(--accent);
-  --lg-btn-primary-shadow:  0 1px 2px rgba(255, 255, 255, 0.5);
-  --lg-btn-danger-text:     var(--danger-text);
-  --lg-btn-danger-shadow:   0 1px 2px rgba(255, 255, 255, 0.5);
+  --lg-btn-primary-text:    #312e81; /* Darker indigo for high contrast */
+  --lg-btn-primary-shadow:  0 1px 3px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255,255,255,0.4);
+  --lg-btn-danger-text:     #7f1d1d; /* Darker red for high contrast */
+  --lg-btn-danger-shadow:   0 1px 3px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255,255,255,0.4);
 
   /* ── Chart Colors (light) ── */
   --chart-grid:        rgba(0, 0, 0, 0.06);

@@ -11,16 +11,48 @@ Cooldown and threading logic are now handled by the notification_service.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_for_speech(text: str) -> str:
+    """Remove special characters that Twilio might read verbatim, like underscores, dashes, etc."""
+    if not isinstance(text, str):
+        text = str(text)
+    # Replace anything that isn't a letter, number, space, comma, or period.
+    # \w includes underscore, so we also explicitly replace underscore.
+    cleaned = re.sub(r'[^\w\s\.,]|_', ' ', text)
+    # Condense multiple spaces
+    return re.sub(r'\s+', ' ', cleaned).strip()
+
+
+def _format_spoken_time(ts_str: str) -> str:
+    """Parse an ISO 8601 timestamp string and convert it into a natural spoken format."""
+    try:
+        # Standardize for fromisoformat
+        dt_str = str(ts_str).replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(dt_str)
+        except ValueError:
+            # Fallback if there are parsing issues, grab exactly "YYYY-MM-DDTHH:MM:SS"
+            dt = datetime.fromisoformat(dt_str[:19])
+            
+        # Format string on Linux handles %-d and %-I to remove leading zeroes.
+        # e.g., "March 31 at 6 14 PM" instead of "06:14 PM"
+        return dt.strftime("%B %-d at %-I %M %p")
+    except Exception as e:
+        logger.warning(f"Twilio spoken time formatting failed for '{ts_str}': {e}")
+        return str(ts_str)
 
 
 def _build_twiml(event_details: dict) -> str:
     """Return TwiML XML that narrates the incident details via <Say>."""
     event_type = event_details.get("event_type", "unknown")
     severity   = event_details.get("severity", "unknown")
-    timestamp  = event_details.get("timestamp", datetime.now(timezone.utc).isoformat())
+    raw_timestamp = event_details.get("timestamp", datetime.now(timezone.utc).isoformat())
+    timestamp = _format_spoken_time(raw_timestamp)
 
     # Formulate a source description
     if event_details.get("upload_source", event_details.get("source", "manual")) == "manual":
@@ -32,16 +64,17 @@ def _build_twiml(event_details: dict) -> str:
             or "unknown CCTV source"
         )
 
-    # Sanitise angle brackets that would break inline XML
-    for val in (event_type, severity, source, timestamp):
-        if isinstance(val, str):
-            val = val.replace("<", "").replace(">", "")
+    # Clean fields so Twilio doesn't read out symbols like 'underscore' or 'dash'
+    event_type = _clean_for_speech(event_type)
+    severity = _clean_for_speech(severity)
+    source = _clean_for_speech(source)
+    timestamp = _clean_for_speech(timestamp)
 
     message = (
         f"Alert. Citadel traffic monitoring system has detected "
         f"a {severity} severity {event_type} event. "
         f"Source: {source}. "
-        f"Time: {timestamp}. "
+        f"Time {timestamp}. "
         f"Please take appropriate action immediately. "
         # Repeat once for intelligibility
         f"Repeating. "
