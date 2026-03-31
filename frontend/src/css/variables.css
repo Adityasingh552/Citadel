@@ -1,92 +1,198 @@
-/* Citadel Design System — CSS Variables */
+/* Citadel Design System — Dual Theme Variables
+   Dark-first. Light override via [data-theme="light"].
+   ─────────────────────────────────────────────────── */
 
 :root {
-  /* ── Sidebar (Dark) ── */
-  --sidebar-bg: #111827;
-  --sidebar-width: 260px;
-  --sidebar-text: #94a3b8;
-  --sidebar-active: #3b82f6;
-  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+  /* ── Surface Layers ── */
+  --bg-base:        #0c0d10;
+  --bg-elevated:    #12131a;
+  --bg-surface:     #1a1b25;
+  --bg-muted:       #252633;
+  --bg-hover:       rgba(255, 255, 255, 0.04);
+  --bg-subtle-glow: radial-gradient(ellipse at 10% 0%, rgba(99, 102, 241, 0.06) 0%, transparent 60%);
 
-  /* ── Content Area (Light) ── */
-  --content-bg: #f8fafc;
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  /* ── Borders ── */
+  --border-subtle:  rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-focus:   rgba(99, 102, 241, 0.5);
 
-  /* ── Brand ── */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-light: #dbeafe;
-  --accent-glow: rgba(59, 130, 246, 0.25);
+  /* ── Sidebar ── */
+  --sidebar-bg:     #0a0b0e;
+  --sidebar-width:  260px;
+  --sidebar-text:   #64748b;
+  --sidebar-active: #818cf8;
+  --sidebar-hover:  rgba(255, 255, 255, 0.04);
+
+  /* ── Accent — Muted Indigo ── */
+  --accent:         #6366f1;
+  --accent-hover:   #818cf8;
+  --accent-muted:   rgba(99, 102, 241, 0.15);
+  --accent-glow:    rgba(99, 102, 241, 0.25);
+  --accent-text:    #a5b4fc;
 
   /* ── Semantic Colors ── */
-  --danger: #ef4444;
-  --danger-light: #fef2f2;
-  --warning: #f59e0b;
-  --warning-light: #fffbeb;
-  --success: #10b981;
-  --success-light: #ecfdf5;
-  --info: #6366f1;
-  --info-light: #eef2ff;
+  --success:        #34d399;
+  --success-muted:  rgba(52, 211, 153, 0.12);
+  --success-text:   #34d399;
+
+  --warning:        #fbbf24;
+  --warning-muted:  rgba(251, 191, 36, 0.12);
+  --warning-text:   #fbbf24;
+
+  --danger:         #f87171;
+  --danger-muted:   rgba(248, 113, 113, 0.12);
+  --danger-text:    #f87171;
+
+  --info:           #60a5fa;
+  --info-muted:     rgba(96, 165, 250, 0.12);
+  --info-text:      #60a5fa;
 
   /* ── Event Type Colors ── */
-  --type-accident: #ef4444;
-  --type-vehicle: #3b82f6;
+  --type-accident:  #f87171;
+  --type-vehicle:   #60a5fa;
 
-  /* ── Text ── */
-  --text-primary: #1e293b;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --text-light: #ffffff;
+  /* ── Text Hierarchy (4-tier) ── */
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted:     #64748b;
+  --text-ghost:     #475569;
 
-  /* ── Home Page (Dark Theme) ── */
-  --home-bg: #0a0e1a;
-  --home-bg-secondary: #111827;
-  --home-text: #f1f5f9;
-  --home-text-muted: #94a3b8;
-  --glass-bg: rgba(255, 255, 255, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* ── Card Surfaces ── */
+  --card-bg:        #12131a;
+  --card-border:    rgba(255, 255, 255, 0.06);
+  --card-shadow:    none;
+  --card-shadow-hover: 0 4px 24px rgba(0, 0, 0, 0.3);
 
   /* ── Typography ── */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
-  --text-4xl: 2.25rem;
-  --text-5xl: 3rem;
-  --text-6xl: 3.75rem;
+  --font-family:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --text-xs:        0.75rem;
+  --text-sm:        0.875rem;
+  --text-base:      1rem;
+  --text-lg:        1.125rem;
+  --text-xl:        1.25rem;
+  --text-2xl:       1.5rem;
+  --text-3xl:       1.875rem;
+  --text-4xl:       2.25rem;
+  --text-5xl:       3rem;
+  --text-6xl:       3.75rem;
+  --metric-size:    2.5rem;
 
-  /* ── Spacing ── */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
+  /* ── Spacing (editorial-generous) ── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
   --space-16: 4rem;
   --space-20: 5rem;
+  --space-24: 6rem;
 
   /* ── Radius ── */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
   --radius-full: 9999px;
 
-  /* ── Transitions ── */
+  /* ── Transitions (calm, invisible) ── */
   --transition-fast: 150ms ease;
   --transition-base: 250ms ease;
-  --transition-slow: 400ms ease;
+  --transition-slow: 350ms ease;
 
   /* ── Layout ── */
-  --header-height: 64px;
+  --header-height: 72px;
+
+  /* ── Liquid Glass ── */
+  --glass-bg:        rgba(255, 255, 255, 0.04);
+  --glass-border:    rgba(255, 255, 255, 0.08);
+  --glass-blur:      12px;
+  --glass-shine:     linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
+  --glass-active-bg: rgba(99, 102, 241, 0.10);
+  --glass-active-border: rgba(99, 102, 241, 0.20);
+
+  /* ── Chart Colors (dark) ── */
+  --chart-grid:      rgba(255, 255, 255, 0.05);
+  --chart-label:     #64748b;
+  --chart-bg:        #12131a;
+  --chart-bar:       #6366f1;
+  --chart-donut-hole: #12131a;
+  --chart-center-text: #f1f5f9;
+}
+
+
+/* ═══════════════════════════════════════════
+   LIGHT MODE OVERRIDE
+   ═══════════════════════════════════════════ */
+
+[data-theme="light"] {
+  /* ── Surface Layers ── */
+  --bg-base:        #f8f9fb;
+  --bg-elevated:    #ffffff;
+  --bg-surface:     #f1f3f5;
+  --bg-muted:       #e9ecef;
+  --bg-hover:       rgba(0, 0, 0, 0.03);
+  --bg-subtle-glow: radial-gradient(ellipse at 10% 0%, rgba(99, 102, 241, 0.04) 0%, transparent 60%);
+
+  /* ── Borders ── */
+  --border-subtle:  rgba(0, 0, 0, 0.06);
+  --border-default: rgba(0, 0, 0, 0.10);
+  --border-focus:   rgba(99, 102, 241, 0.5);
+
+  /* ── Sidebar ── */
+  --sidebar-bg:     #ffffff;
+  --sidebar-text:   #64748b;
+  --sidebar-active: #6366f1;
+  --sidebar-hover:  rgba(0, 0, 0, 0.04);
+
+  /* ── Accent — stays same ── */
+  --accent-muted:   rgba(99, 102, 241, 0.08);
+  --accent-text:    #6366f1;
+
+  /* ── Semantic (slightly deeper for light bg) ── */
+  --success:        #10b981;
+  --success-muted:  rgba(16, 185, 129, 0.08);
+  --success-text:   #059669;
+
+  --warning:        #f59e0b;
+  --warning-muted:  rgba(245, 158, 11, 0.08);
+  --warning-text:   #d97706;
+
+  --danger:         #ef4444;
+  --danger-muted:   rgba(239, 68, 68, 0.06);
+  --danger-text:    #dc2626;
+
+  --info:           #3b82f6;
+  --info-muted:     rgba(59, 130, 246, 0.06);
+  --info-text:      #2563eb;
+
+  /* ── Text Hierarchy ── */
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+  --text-ghost:     #cbd5e1;
+
+  /* ── Cards ── */
+  --card-bg:          #ffffff;
+  --card-border:      rgba(0, 0, 0, 0.06);
+  --card-shadow:      0 1px 3px rgba(0, 0, 0, 0.04);
+  --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* ── Liquid Glass (light mode) ── */
+  --glass-bg:          rgba(255, 255, 255, 0.6);
+  --glass-border:      rgba(0, 0, 0, 0.06);
+  --glass-shine:       linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.3) 50%);
+  --glass-active-bg:   rgba(99, 102, 241, 0.08);
+  --glass-active-border: rgba(99, 102, 241, 0.15);
+
+  /* ── Chart Colors (light) ── */
+  --chart-grid:        rgba(0, 0, 0, 0.06);
+  --chart-label:       #94a3b8;
+  --chart-bg:          #ffffff;
+  --chart-bar:         #6366f1;
+  --chart-donut-hole:  #ffffff;
+  --chart-center-text: #0f172a;
 }

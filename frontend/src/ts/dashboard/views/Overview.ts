@@ -1,4 +1,5 @@
-/** Dashboard — Overview view with stats, charts, and recent events. */
+/** Dashboard — Overview view with stats, charts, and recent events.
+ *  Premium editorial layout with large metrics and section headers. */
 
 import { api } from '../../api.js';
 import type { SystemStats } from '../../types/index.js';
@@ -8,39 +9,49 @@ import { renderBarChart, renderDonutChart } from '../../utils/charts.js';
 export async function renderOverview(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="overview-grid">
-      <div class="overview-grid__stats" id="stats-row">
-        ${renderStatsPlaceholder()}
+      <div>
+        <div class="overview-section-label">System Pulse</div>
+        <div class="overview-grid__stats" id="stats-row">
+          ${renderStatsPlaceholder()}
+        </div>
       </div>
-      <div class="overview-grid__charts">
-        <div class="card" style="position: relative;">
-          <div class="card__header">
-            <span class="card__title">Event Timeline (24h)</span>
-            <div id="alert-indicator-wrapper" style="display:none; align-items:center; gap:6px;">
-               <div class="alert-pulse"></div>
-               <span style="font-size:0.8rem; color:var(--text-muted);">Recent Alerts Dispatched</span>
+
+      <div>
+        <div class="overview-section-label">Timeline Analysis</div>
+        <div class="overview-grid__charts">
+          <div class="card" style="position: relative;">
+            <div class="card__header">
+              <span class="card__title">Event Timeline (24h)</span>
+              <div id="alert-indicator-wrapper" style="display:none; align-items:center; gap:6px;">
+                 <div class="alert-pulse"></div>
+                 <span style="font-size:0.75rem; color:var(--text-muted);">Recent Alerts Dispatched</span>
+              </div>
+            </div>
+            <div class="chart-container" style="height: 220px;">
+              <canvas id="timeline-chart"></canvas>
             </div>
           </div>
-          <div class="chart-container" style="height: 220px;">
-            <canvas id="timeline-chart"></canvas>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card__header">
-            <span class="card__title">Severity Breakdown</span>
-          </div>
-          <div class="chart-container" style="height: 220px;">
-            <canvas id="severity-chart"></canvas>
+          <div class="card">
+            <div class="card__header">
+              <span class="card__title">Severity Breakdown</span>
+            </div>
+            <div class="chart-container" style="height: 220px;">
+              <canvas id="severity-chart"></canvas>
+            </div>
           </div>
         </div>
       </div>
-      <div class="card">
-        <div class="card__header">
-          <span class="card__title">Recent Events</span>
-        </div>
-        <div id="recent-events">
-          <div class="empty-state">
-            <div class="empty-state__icon"></div>
-            <div class="empty-state__title">Loading events...</div>
+
+      <div>
+        <div class="overview-section-label">Recent Activity</div>
+        <div class="card">
+          <div class="card__header">
+            <span class="card__title">Recent Events</span>
+          </div>
+          <div id="recent-events">
+            <div class="empty-state" style="padding: var(--space-8);">
+              <div class="empty-state__title">Loading events...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -50,8 +61,6 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
   let alertStats: any = null;
   try {
       alertStats = await api.get('/alerts/stats');
-      
-      // Show indicator if there are recent alerts (simplification: if total_sent > 0, we can refine this)
       if (alertStats && alertStats.total_sent > 0) {
           const mEl = document.getElementById('alert-indicator-wrapper');
           if (mEl) mEl.style.display = 'flex';
@@ -74,8 +83,7 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
   } catch {
     const el = document.getElementById('recent-events');
     if (el) el.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state__icon"></div>
+      <div class="empty-state" style="padding: var(--space-8);">
         <div class="empty-state__title">No events detected yet</div>
         <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
       </div>
@@ -100,18 +108,18 @@ function renderStatsCards(stats: SystemStats | null, alertsCount: number | null)
 
   const vals = stats
     ? [
-      { label: 'Total Events', value: formatNumber(stats.total_events), color: 'blue' },
-      { label: 'Accidents', value: formatNumber(stats.total_accidents), color: 'red' },
-      { label: 'Vehicles', value: formatNumber(stats.total_vehicles), color: 'amber' },
-      { label: 'Tickets', value: formatNumber(stats.total_tickets), color: 'green' },
-      { label: 'Alerts Sent', value: alertsCount !== null ? formatNumber(alertsCount) : '—', color: 'info' },
+      { label: 'Total Events', value: formatNumber(stats.total_events) },
+      { label: 'Accidents',    value: formatNumber(stats.total_accidents) },
+      { label: 'Vehicles',     value: formatNumber(stats.total_vehicles) },
+      { label: 'Tickets',      value: formatNumber(stats.total_tickets) },
+      { label: 'Alerts Sent',  value: alertsCount !== null ? formatNumber(alertsCount) : '—' },
     ]
     : [
-      { label: 'Total Events', value: '—', color: 'blue' },
-      { label: 'Accidents', value: '—', color: 'red' },
-      { label: 'Vehicles', value: '—', color: 'amber' },
-      { label: 'Tickets', value: '—', color: 'green' },
-      { label: 'Alerts Sent', value: '—', color: 'info' },
+      { label: 'Total Events', value: '—' },
+      { label: 'Accidents',    value: '—' },
+      { label: 'Vehicles',     value: '—' },
+      { label: 'Tickets',      value: '—' },
+      { label: 'Alerts Sent',  value: '—' },
     ];
 
   el.innerHTML = vals.map(s => `
@@ -125,24 +133,22 @@ function renderStatsCards(stats: SystemStats | null, alertsCount: number | null)
 }
 
 function renderCharts(stats: SystemStats): void {
-  // Timeline bar chart
   const timelineCanvas = document.getElementById('timeline-chart') as HTMLCanvasElement;
   if (timelineCanvas) {
     renderBarChart(timelineCanvas, stats.timeline_24h.map(t => ({
       label: t.hour,
       value: t.count,
-      color: '#3b82f6',
+      color: getComputedStyle(document.documentElement).getPropertyValue('--chart-bar').trim() || '#6366f1',
     })));
   }
 
-  // Severity donut chart
   const severityCanvas = document.getElementById('severity-chart') as HTMLCanvasElement;
   if (severityCanvas) {
     const sb = stats.severity_breakdown;
     renderDonutChart(severityCanvas, [
-      { label: 'High', value: sb.high, color: '#ef4444' },
-      { label: 'Medium', value: sb.medium, color: '#f59e0b' },
-      { label: 'Low', value: sb.low, color: '#10b981' },
+      { label: 'High',   value: sb.high,   color: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#f87171' },
+      { label: 'Medium', value: sb.medium,  color: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim() || '#fbbf24' },
+      { label: 'Low',    value: sb.low,    color: getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#34d399' },
     ]);
   }
 }
@@ -153,8 +159,7 @@ function renderRecentEvents(events: Array<Record<string, unknown>>): void {
 
   if (!events.length) {
     el.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state__icon"></div>
+      <div class="empty-state" style="padding: var(--space-8);">
         <div class="empty-state__title">No events detected yet</div>
         <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
       </div>
@@ -180,7 +185,7 @@ function renderRecentEvents(events: Array<Record<string, unknown>>): void {
             <td><span class="badge badge--${e.event_type}">${e.event_type}</span></td>
             <td><span class="badge badge--${e.severity}">${e.severity}</span></td>
             <td>${((e.confidence as number) * 100).toFixed(1)}%</td>
-            <td>${e.source_video || '—'}</td>
+            <td style="color: var(--text-muted);">${e.source_video || '—'}</td>
           </tr>
         `).join('')}
       </tbody>

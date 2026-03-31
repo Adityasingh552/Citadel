@@ -1,11 +1,11 @@
-/* Citadel — Login Page Styles */
+/* Citadel — Login Page Styles (unified with design tokens) */
 
 .login {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--home-bg);
+    background: var(--bg-base);
     position: relative;
     overflow: hidden;
 }
@@ -16,14 +16,14 @@
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
+        radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.10) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(52, 211, 153, 0.04) 0%, transparent 50%);
     animation: loginGlow 8s ease-in-out infinite alternate;
 }
 
 @keyframes loginGlow {
-    0% { opacity: 0.6; }
+    0%   { opacity: 0.6; }
     100% { opacity: 1; }
 }
 
@@ -32,13 +32,14 @@
     width: 100%;
     max-width: 420px;
     padding: var(--space-10);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl);
     backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     box-shadow:
         0 8px 32px rgba(0, 0, 0, 0.3),
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 
 .login-card__logo {
@@ -49,7 +50,7 @@
 .login-card__logo-text {
     font-size: var(--text-3xl);
     font-weight: 900;
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -58,7 +59,7 @@
 
 .login-card__subtitle {
     text-align: center;
-    color: var(--home-text-muted);
+    color: var(--text-muted);
     font-size: var(--text-sm);
     margin-bottom: var(--space-8);
 }
@@ -78,34 +79,34 @@
 .login-field__label {
     font-size: var(--text-sm);
     font-weight: 500;
-    color: var(--home-text-muted);
+    color: var(--text-muted);
 }
 
 .login-field__input {
     width: 100%;
     padding: var(--space-3) var(--space-4);
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    color: var(--home-text);
+    color: var(--text-primary);
     font-size: var(--text-base);
     outline: none;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .login-field__input::placeholder {
-    color: rgba(255, 255, 255, 0.25);
+    color: var(--text-ghost);
 }
 
 .login-field__input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: 0 0 0 3px var(--accent-muted);
 }
 
 .login-submit {
     width: 100%;
     padding: var(--space-3) var(--space-4);
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    background: var(--accent);
     color: white;
     font-weight: 600;
     font-size: var(--text-base);
@@ -117,8 +118,9 @@
 }
 
 .login-submit:hover:not(:disabled) {
+    background: var(--accent-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 4px 16px var(--accent-glow);
 }
 
 .login-submit:active:not(:disabled) {
@@ -132,10 +134,10 @@
 
 .login-error {
     padding: var(--space-3) var(--space-4);
-    background: rgba(239, 68, 68, 0.12);
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: var(--danger-muted);
+    border: 1px solid rgba(248, 113, 113, 0.2);
     border-radius: var(--radius-md);
-    color: #fca5a5;
+    color: var(--danger);
     font-size: var(--text-sm);
     text-align: center;
     display: none;
@@ -148,8 +150,8 @@
 
 @keyframes loginShake {
     0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-6px); }
-    40% { transform: translateX(6px); }
-    60% { transform: translateX(-4px); }
-    80% { transform: translateX(4px); }
+    20%  { transform: translateX(-6px); }
+    40%  { transform: translateX(6px); }
+    60%  { transform: translateX(-4px); }
+    80%  { transform: translateX(4px); }
 }
