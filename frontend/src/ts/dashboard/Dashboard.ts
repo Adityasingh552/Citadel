@@ -143,9 +143,8 @@ export function renderDashboard(container: HTMLElement): void {
     <div class="dashboard">
       <!-- Sidebar -->
       <aside class="sidebar">
-        <div class="sidebar__logo">
-          <span class="sidebar__logo-mark">C</span>
-          Citadel
+        <div class="sidebar__logo brand-logo">
+          CITADEL
         </div>
 
         <nav class="sidebar__nav">

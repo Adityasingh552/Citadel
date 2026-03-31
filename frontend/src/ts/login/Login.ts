@@ -9,7 +9,7 @@ export function renderLogin(container: HTMLElement): void {
       <div class="login-side-label">PLATFORM PROTOCOL 8.42</div>
 
       <div class="login-card">
-        <div class="login-card__logo">CITADEL</div>
+        <div class="login-card__logo brand-logo">CITADEL</div>
         <h2 class="login-card__title">Access the Platform</h2>
         <p class="login-card__subtitle">Enter your credentials to monitor real-time safety.</p>
 
@@ -29,10 +29,7 @@ export function renderLogin(container: HTMLElement): void {
             />
           </div>
           <div class="login-field">
-            <div class="login-field__header">
-                <label class="login-field__label" for="login-password">Password</label>
-                <a href="#/forgot-password" class="login-field__link">Forgot Password?</a>
-            </div>
+            <label class="login-field__label" for="login-password">Password</label>
             <input
               class="login-field__input"
               type="password"
@@ -47,10 +44,6 @@ export function renderLogin(container: HTMLElement): void {
             Sign In
           </button>
         </form>
-
-        <div class="login-footer-link">
-            Don't have access? <a href="#/request-access" class="login-link">Request Access</a>
-        </div>
       </div>
 
       <!-- Footer indicators -->

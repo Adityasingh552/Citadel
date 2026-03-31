@@ -28,11 +28,7 @@
 }
 
 .home-nav__logo {
-    font-size: var(--text-xl);
-    font-weight: 900;
-    letter-spacing: 0.15em;
-    color: var(--text-primary);
-    text-transform: uppercase;
+    cursor: pointer;
 }
 
 .home-nav__links {

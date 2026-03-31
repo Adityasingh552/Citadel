@@ -5,7 +5,7 @@ export function renderHome(container: HTMLElement): void {
     <div class="home">
       <!-- Navbar -->
       <nav class="home-nav">
-        <div class="home-nav__logo">Citadel</div>
+        <div class="home-nav__logo brand-logo">CITADEL</div>
         <ul class="home-nav__links">
           <li><a href="#features" class="home-nav__link">Features</a></li>
           <li><a href="#how-it-works" class="home-nav__link">How It Works</a></li>
@@ -16,7 +16,7 @@ export function renderHome(container: HTMLElement): void {
       <!-- Hero -->
       <section class="hero">
         <video class="hero__video" autoplay muted loop playsinline>
-          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260217_030345_246c0224-10a4-422c-b324-070b7c0eceda.mp4" type="video/mp4">
+          <source src="https://videos.pexels.com/video-files/32909774/14025986_3840_2160_29fps.mp4" type="video/mp4">
         </video>
         <div class="hero__overlay"></div>
         <div class="hero__content">

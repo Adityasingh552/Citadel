@@ -252,3 +252,22 @@
   --chart-donut-hole:  #ffffff;
   --chart-center-text: #0f172a;
 }
+
+/* ═══════════════════════════════════════════
+   BRAND IDENTITY
+   ═══════════════════════════════════════════ */
+
+.brand-logo {
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: 0.5em;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    text-indent: 0.5em; /* Optical center correction for tracking */
+    user-select: none;
+    transition: color var(--transition-base);
+}
+
+[data-theme="light"] .brand-logo {
+    color: var(--text-primary);
+}

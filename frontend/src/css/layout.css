@@ -30,28 +30,9 @@
 }
 
 .sidebar__logo {
-    font-size: var(--text-lg);
-    font-weight: 900;
-    letter-spacing: 0.18em;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    padding: 0 var(--space-6) var(--space-8);
+    padding: var(--space-6) var(--space-6) var(--space-8);
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-}
-
-.sidebar__logo-mark {
-    width: 32px;
-    height: 32px;
-    background: var(--accent);
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: var(--text-sm);
-    font-weight: 800;
 }
 
 /* Navigation */
