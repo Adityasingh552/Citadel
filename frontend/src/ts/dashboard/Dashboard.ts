@@ -14,7 +14,6 @@ const NAV_ITEMS: { id: DashboardView; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'events', label: 'Events' },
   { id: 'tickets', label: 'Tickets' },
-  { id: 'alerts', label: 'Alerts' },
   { id: 'live', label: 'Manual Feed' },
   { id: 'monitor', label: 'Live Monitor' },
   { id: 'cameras', label: 'Cameras' },
@@ -25,7 +24,6 @@ const VIEW_TITLES: Record<DashboardView, string> = {
   overview: 'Overview',
   events: 'Events',
   tickets: 'Tickets',
-  alerts: 'Notifications',
   live: 'Manual Feed',
   monitor: 'Live Monitor',
   cameras: 'Cameras',
@@ -95,9 +93,6 @@ export function renderDashboard(container: HTMLElement): void {
         <h1 class="header__title" id="view-title">${VIEW_TITLES[activeView]}</h1>
         <div class="header__actions">
           <input type="text" class="header__search" placeholder="Search..." />
-          <button class="header__icon-btn" title="Notifications">
-            <span class="header__badge" id="notif-badge">0</span>
-          </button>
           <span class="header__clock" id="header-clock"></span>
         </div>
       </header>

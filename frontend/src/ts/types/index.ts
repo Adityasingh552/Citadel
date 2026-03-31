@@ -3,7 +3,7 @@
 export type EventType = 'accident' | 'vehicle';
 export type Severity = 'high' | 'medium' | 'low';
 export type TicketStatus = 'issued' | 'pending' | 'resolved';
-export type DashboardView = 'overview' | 'events' | 'tickets' | 'alerts' | 'live' | 'monitor' | 'cameras' | 'settings';
+export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'cameras' | 'settings';
 
 export interface BoundingBox {
     x: number;
