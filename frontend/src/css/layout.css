@@ -240,8 +240,15 @@
 }
 
 @keyframes glass-pulse {
-    0%, 100% { opacity: 0.5; }
-    50%      { opacity: 1; }
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 /* ── Icon SVG ── */
@@ -285,8 +292,15 @@
 }
 
 @keyframes status-glow {
-    0%, 100% { box-shadow: 0 0 6px var(--success); }
-    50%      { box-shadow: 0 0 12px var(--success); }
+
+    0%,
+    100% {
+        box-shadow: 0 0 6px var(--success);
+    }
+
+    50% {
+        box-shadow: 0 0 12px var(--success);
+    }
 }
 
 .sidebar__footer-actions {

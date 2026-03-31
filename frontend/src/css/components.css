@@ -181,8 +181,13 @@
     gap: var(--space-1);
 }
 
-.stats-card__trend--up   { color: var(--success); }
-.stats-card__trend--down { color: var(--danger); }
+.stats-card__trend--up {
+    color: var(--success);
+}
+
+.stats-card__trend--down {
+    color: var(--danger);
+}
 
 
 /* ═══════════════════════════════════════════
@@ -200,18 +205,65 @@
     letter-spacing: 0.02em;
 }
 
-.badge--accident { background: var(--danger-muted);  color: var(--danger-text); }
-.badge--vehicle  { background: var(--info-muted);    color: var(--info-text); }
-.badge--high     { background: var(--danger-muted);  color: var(--danger-text); }
-.badge--medium   { background: var(--warning-muted); color: var(--warning-text); }
-.badge--low      { background: var(--success-muted); color: var(--success-text); }
-.badge--issued   { background: var(--info-muted);    color: var(--info-text); }
-.badge--pending  { background: var(--warning-muted); color: var(--warning-text); }
-.badge--resolved { background: var(--success-muted); color: var(--success-text); }
-.badge--success  { background: var(--success-muted); color: var(--success-text); }
-.badge--info     { background: var(--info-muted);    color: var(--info-text); }
-.badge--danger   { background: var(--danger-muted);  color: var(--danger-text); }
-.badge--muted    { background: var(--bg-muted);      color: var(--text-muted); }
+.badge--accident {
+    background: var(--danger-muted);
+    color: var(--danger-text);
+}
+
+.badge--vehicle {
+    background: var(--info-muted);
+    color: var(--info-text);
+}
+
+.badge--high {
+    background: var(--danger-muted);
+    color: var(--danger-text);
+}
+
+.badge--medium {
+    background: var(--warning-muted);
+    color: var(--warning-text);
+}
+
+.badge--low {
+    background: var(--success-muted);
+    color: var(--success-text);
+}
+
+.badge--issued {
+    background: var(--info-muted);
+    color: var(--info-text);
+}
+
+.badge--pending {
+    background: var(--warning-muted);
+    color: var(--warning-text);
+}
+
+.badge--resolved {
+    background: var(--success-muted);
+    color: var(--success-text);
+}
+
+.badge--success {
+    background: var(--success-muted);
+    color: var(--success-text);
+}
+
+.badge--info {
+    background: var(--info-muted);
+    color: var(--info-text);
+}
+
+.badge--danger {
+    background: var(--danger-muted);
+    color: var(--danger-text);
+}
+
+.badge--muted {
+    background: var(--bg-muted);
+    color: var(--text-muted);
+}
 
 
 /* ═══════════════════════════════════════════
@@ -534,10 +586,21 @@
     min-width: 280px;
 }
 
-.toast--success { border-left: 3px solid var(--success); }
-.toast--error   { border-left: 3px solid var(--danger); }
-.toast--warning { border-left: 3px solid var(--warning); }
-.toast--info    { border-left: 3px solid var(--info); }
+.toast--success {
+    border-left: 3px solid var(--success);
+}
+
+.toast--error {
+    border-left: 3px solid var(--danger);
+}
+
+.toast--warning {
+    border-left: 3px solid var(--warning);
+}
+
+.toast--info {
+    border-left: 3px solid var(--info);
+}
 
 .toast__icon {
     font-size: var(--text-base);
@@ -545,9 +608,17 @@
     line-height: 1;
 }
 
-.toast--success .toast__icon { color: var(--success); }
-.toast--error   .toast__icon { color: var(--danger); }
-.toast--info    .toast__icon { color: var(--info); }
+.toast--success .toast__icon {
+    color: var(--success);
+}
+
+.toast--error .toast__icon {
+    color: var(--danger);
+}
+
+.toast--info .toast__icon {
+    color: var(--info);
+}
 
 .toast__message {
     flex: 1;
@@ -652,11 +723,11 @@
     transition: transform var(--transition-fast);
 }
 
-.toggle input:checked + .toggle__slider {
+.toggle input:checked+.toggle__slider {
     background: var(--accent);
 }
 
-.toggle input:checked + .toggle__slider::before {
+.toggle input:checked+.toggle__slider::before {
     transform: translateX(20px);
 }
 
@@ -666,23 +737,49 @@
    ═══════════════════════════════════════════ */
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes slideUp {
-    from { transform: translateY(16px); opacity: 0; }
-    to   { transform: translateY(0); opacity: 1; }
+    from {
+        transform: translateY(16px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to   { transform: translateX(0); opacity: 1; }
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 
 @keyframes slideOut {
-    from { transform: translateX(0); opacity: 1; }
-    to   { transform: translateX(110%); opacity: 0; }
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateX(110%);
+        opacity: 0;
+    }
 }
 
 
