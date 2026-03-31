@@ -94,6 +94,11 @@
 .sidebar__item:hover .nav-icon-glass {
     background: var(--glass-bg);
     border-color: var(--glass-border);
+    box-shadow: var(--glass-face-glow);
+}
+
+.sidebar__item:hover .nav-icon-glass .lg-edge {
+    box-shadow: var(--glass-edge-shadow);
 }
 
 .sidebar__item--active {
@@ -105,10 +110,21 @@
 .sidebar__item--active .nav-icon-glass {
     background: var(--glass-active-bg);
     border-color: var(--glass-active-border);
-    box-shadow: 0 0 16px var(--accent-glow);
+    box-shadow: var(--glass-face-glow), 0 0 16px var(--accent-glow);
 }
 
-/* ── Liquid Glass Icon Container ── */
+.sidebar__item--active .nav-icon-glass .lg-edge {
+    box-shadow: var(--glass-edge-active);
+}
+
+/* ═══════════════════════════════════════════
+   LIQUID GLASS — 3-layer system
+   (Matches ui-layouts/liquid-glass component)
+   Layer 1 = Bend  (backdrop-blur + SVG distortion)
+   Layer 2 = Face  (outer glow / shadows)
+   Layer 3 = Edge  (inner inset highlights)
+   ═══════════════════════════════════════════ */
+
 .nav-icon-glass {
     width: 34px;
     height: 34px;
@@ -117,18 +133,40 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-
-    /* Liquid glass effect */
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
     position: relative;
     overflow: hidden;
     transition: all var(--transition-base);
+
+    /* Base */
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
 }
 
-/* Glass shine overlay */
+/* ── Layer 1: Bend (backdrop blur + SVG turbulence distortion) ── */
+.nav-icon-glass .lg-bend {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    filter: url(#liquid-glass-bend);
+    z-index: 0;
+}
+
+/* ── Layer 2: Face (outer glow shadow — applied on hover/active via box-shadow above) ── */
+
+/* ── Layer 3: Edge (inner highlights) ── */
+.nav-icon-glass .lg-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: var(--glass-edge-shadow);
+    z-index: 2;
+    pointer-events: none;
+    transition: box-shadow var(--transition-base);
+}
+
+/* ── Shine overlay (top-left gradient highlight) ── */
 .nav-icon-glass::before {
     content: '';
     position: absolute;
@@ -136,9 +174,10 @@
     background: var(--glass-shine);
     border-radius: inherit;
     pointer-events: none;
+    z-index: 3;
 }
 
-/* Subtle refraction glow on active */
+/* ── Active refraction pulse ── */
 .sidebar__item--active .nav-icon-glass::after {
     content: '';
     position: absolute;
@@ -146,6 +185,7 @@
     background: radial-gradient(circle at 30% 20%, var(--accent-glow), transparent 70%);
     border-radius: inherit;
     pointer-events: none;
+    z-index: 1;
     animation: glass-pulse 3s ease-in-out infinite;
 }
 
@@ -154,6 +194,7 @@
     50%      { opacity: 1; }
 }
 
+/* ── Icon SVG ── */
 .nav-icon-glass svg {
     width: 18px;
     height: 18px;
@@ -161,7 +202,7 @@
     stroke-width: 1.8;
     fill: none;
     position: relative;
-    z-index: 1;
+    z-index: 4;
 }
 
 /* ── Sidebar Footer ── */

@@ -106,13 +106,23 @@
   /* ── Layout ── */
   --header-height: 72px;
 
-  /* ── Liquid Glass ── */
-  --glass-bg:        rgba(255, 255, 255, 0.04);
-  --glass-border:    rgba(255, 255, 255, 0.08);
-  --glass-blur:      12px;
-  --glass-shine:     linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
-  --glass-active-bg: rgba(99, 102, 241, 0.10);
-  --glass-active-border: rgba(99, 102, 241, 0.20);
+  /* ── Liquid Glass (3-layer: bend + face + edge) ── */
+  --glass-bg:             rgba(255, 255, 255, 0.04);
+  --glass-border:         rgba(255, 255, 255, 0.08);
+  --glass-blur:           12px;
+  --glass-shine:          linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
+  --glass-active-bg:      rgba(99, 102, 241, 0.10);
+  --glass-active-border:  rgba(99, 102, 241, 0.20);
+
+  /* Face layer — outer glow */
+  --glass-face-glow:      0 4px 4px rgba(0, 0, 0, 0.15),
+                          0 0 12px rgba(0, 0, 0, 0.08),
+                          0 0 24px rgba(255, 255, 255, 0.10);
+  /* Edge layer — inner highlights */
+  --glass-edge-shadow:    inset 2px 2px 2px 0 rgba(255, 255, 255, 0.15),
+                          inset -2px -2px 2px 0 rgba(255, 255, 255, 0.15);
+  --glass-edge-active:    inset 2px 2px 3px 0 rgba(129, 140, 248, 0.35),
+                          inset -2px -2px 3px 0 rgba(129, 140, 248, 0.35);
 
   /* ── Chart Colors (dark) ── */
   --chart-grid:      rgba(255, 255, 255, 0.05);
@@ -182,11 +192,18 @@
   --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.08);
 
   /* ── Liquid Glass (light mode) ── */
-  --glass-bg:          rgba(255, 255, 255, 0.6);
-  --glass-border:      rgba(0, 0, 0, 0.06);
-  --glass-shine:       linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.3) 50%);
-  --glass-active-bg:   rgba(99, 102, 241, 0.08);
+  --glass-bg:           rgba(255, 255, 255, 0.6);
+  --glass-border:       rgba(0, 0, 0, 0.06);
+  --glass-shine:        linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.3) 50%);
+  --glass-active-bg:    rgba(99, 102, 241, 0.08);
   --glass-active-border: rgba(99, 102, 241, 0.15);
+  --glass-face-glow:    0 2px 4px rgba(0, 0, 0, 0.05),
+                        0 0 8px rgba(0, 0, 0, 0.04),
+                        0 0 16px rgba(255, 255, 255, 0.15);
+  --glass-edge-shadow:  inset 1px 1px 2px 0 rgba(255, 255, 255, 0.55),
+                        inset -1px -1px 2px 0 rgba(255, 255, 255, 0.55);
+  --glass-edge-active:  inset 2px 2px 3px 0 rgba(99, 102, 241, 0.25),
+                        inset -2px -2px 3px 0 rgba(99, 102, 241, 0.25);
 
   /* ── Chart Colors (light) ── */
   --chart-grid:        rgba(0, 0, 0, 0.06);

@@ -119,7 +119,7 @@ function buildNavHTML(activeView: DashboardView): string {
       <a href="#/dashboard/${item.id}"
          class="sidebar__item ${isActive ? 'sidebar__item--active' : ''}"
          data-view="${item.id}">
-        <span class="nav-icon-glass">${ICONS[item.id] || ''}</span>
+        <span class="nav-icon-glass"><span class="lg-bend"></span><span class="lg-edge"></span>${ICONS[item.id] || ''}</span>
         <span>${item.label}</span>
       </a>`;
   }
@@ -140,6 +140,16 @@ export function renderDashboard(container: HTMLElement): void {
   });
 
   container.innerHTML = `
+    <!-- Hidden SVG filter for liquid glass distortion (ui-layouts technique) -->
+    <svg style="position:absolute;width:0;height:0;overflow:hidden;" aria-hidden="true">
+      <defs>
+        <filter id="liquid-glass-bend" x="0" y="0" width="100%" height="100%" filterUnits="objectBoundingBox">
+          <feTurbulence type="fractalNoise" baseFrequency="0.003 0.007" numOctaves="1" result="turbulence" />
+          <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="200" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+    </svg>
+
     <div class="dashboard">
       <!-- Sidebar -->
       <aside class="sidebar">
