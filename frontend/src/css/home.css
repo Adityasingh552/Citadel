@@ -56,19 +56,45 @@
 }
 
 .home-nav__cta {
-    background: var(--accent);
     color: white;
     padding: var(--space-2) var(--space-5);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     font-weight: 600;
     font-size: var(--text-sm);
-    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background: var(--lg-btn-bg);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+.home-nav__cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    filter: url(#liquid-glass-bend);
+    z-index: -3;
+}
+
+.home-nav__cta::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--lg-btn-accent-overlay);
+    z-index: -2;
 }
 
 .home-nav__cta:hover {
-    background: var(--accent-hover);
     color: white;
-    box-shadow: 0 0 20px var(--accent-glow);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-accent-specular),
+               0 0 30px var(--accent-glow);
 }
 
 /* ── Hero Section ── */
@@ -133,22 +159,46 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    background: var(--accent);
     color: white;
     padding: var(--space-4) var(--space-8);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     font-size: var(--text-lg);
     font-weight: 700;
-    transition: all var(--transition-base);
     position: relative;
-    box-shadow: 0 0 30px var(--accent-glow);
+    overflow: hidden;
+    isolation: isolate;
+    background: var(--lg-btn-bg);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular),
+               0 0 30px var(--accent-glow);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+.hero__cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    filter: url(#liquid-glass-bend);
+    z-index: -3;
+}
+
+.hero__cta::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--lg-btn-accent-overlay);
+    z-index: -2;
 }
 
 .hero__cta:hover {
-    background: var(--accent-hover);
     color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 0 50px var(--accent-glow);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-accent-specular),
+               0 0 50px var(--accent-glow);
 }
 
 /* ── Features Section ── */

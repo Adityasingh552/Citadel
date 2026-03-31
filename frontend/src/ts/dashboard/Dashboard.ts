@@ -140,16 +140,6 @@ export function renderDashboard(container: HTMLElement): void {
   });
 
   container.innerHTML = `
-    <!-- Hidden SVG filter for liquid glass distortion (ui-layouts technique) -->
-    <svg style="position:absolute;width:0;height:0;overflow:hidden;" aria-hidden="true">
-      <defs>
-        <filter id="liquid-glass-bend" x="0" y="0" width="100%" height="100%" filterUnits="objectBoundingBox">
-          <feTurbulence type="fractalNoise" baseFrequency="0.003 0.007" numOctaves="1" result="turbulence" />
-          <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="200" xChannelSelector="R" yChannelSelector="G" />
-        </filter>
-      </defs>
-    </svg>
-
     <div class="dashboard">
       <!-- Sidebar -->
       <aside class="sidebar">

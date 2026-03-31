@@ -37,16 +37,27 @@
 .overview-grid {
     display: flex;
     flex-direction: column;
-    gap: var(--space-8);
+    gap: var(--space-10);
 }
 
 .overview-section-label {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--text-ghost);
-    margin-bottom: var(--space-2);
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-shadow: 0 0 12px var(--accent-glow);
+}
+
+.overview-section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border-default), transparent);
 }
 
 .overview-grid__stats {
@@ -151,22 +162,71 @@
 
 .tickets-tabs__btn {
     padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--text-muted);
-    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+.tickets-tabs__btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    filter: url(#liquid-glass-bend);
+    z-index: -3;
+    opacity: 0;
+    transition: all var(--transition-base);
+}
+
+.tickets-tabs__btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--lg-btn-overlay);
+    z-index: -2;
+    opacity: 0;
+    transition: opacity var(--transition-base);
 }
 
 .tickets-tabs__btn:hover {
     color: var(--text-primary);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-specular);
+}
+
+.tickets-tabs__btn:hover::before {
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    opacity: 1;
+}
+
+.tickets-tabs__btn:hover::after {
+    opacity: 1;
 }
 
 .tickets-tabs__btn--active {
-    background: var(--card-bg);
     color: var(--accent);
     font-weight: 600;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular);
+}
+
+.tickets-tabs__btn--active::before {
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    opacity: 1;
+}
+
+.tickets-tabs__btn--active::after {
+    background: var(--lg-btn-accent-overlay);
+    opacity: 1;
 }
 
 .tickets-tabs__count {
@@ -852,31 +912,71 @@
     flex-shrink: 0;
 }
 
-/* Buttons */
+/* Buttons — Liquid Glass */
 .stg__btn {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     font-weight: 600;
     font-size: var(--text-sm);
     cursor: pointer;
     border: none;
-    transition: all var(--transition-fast);
     white-space: nowrap;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    color: var(--text-primary);
+    background: var(--lg-btn-bg);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-specular);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+.stg__btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    filter: url(#liquid-glass-bend);
+    z-index: -3;
+}
+
+.stg__btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--lg-btn-overlay);
+    z-index: -2;
+}
+
+.stg__btn:hover {
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-specular);
+    transform: translateY(-2px) scale(1.02);
+}
+
+.stg__btn:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 0.1s;
 }
 
 .stg__btn svg { flex-shrink: 0; }
 
 .stg__btn--primary {
-    background: var(--accent);
     color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular);
+}
+
+.stg__btn--primary::after {
+    background: var(--lg-btn-accent-overlay);
 }
 
 .stg__btn--primary:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-accent-specular);
 }
 
 .stg__btn--primary:disabled {
@@ -888,7 +988,12 @@
 .stg__btn--outline {
     background: transparent;
     color: var(--text-secondary);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-specular);
+}
+
+.stg__btn--outline::after {
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .stg__btn--outline:hover {
@@ -896,12 +1001,23 @@
     color: var(--accent);
 }
 
-.stg__btn--danger {
-    background: var(--danger);
-    color: white;
+.stg__btn--outline:hover::after {
+    background: var(--lg-btn-accent-overlay);
 }
 
-.stg__btn--danger:hover { filter: brightness(1.12); }
+.stg__btn--danger {
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-danger-specular);
+}
+
+.stg__btn--danger::after {
+    background: var(--lg-btn-danger-overlay);
+}
+
+.stg__btn--danger:hover {
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-danger-specular);
+}
 
 .stg__btn--danger:disabled {
     opacity: 0.5;

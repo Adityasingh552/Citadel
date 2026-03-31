@@ -124,6 +124,23 @@
   --glass-edge-active:    inset 2px 2px 3px 0 rgba(129, 140, 248, 0.35),
                           inset -2px -2px 3px 0 rgba(129, 140, 248, 0.35);
 
+  /* ── Liquid Glass Buttons (reference: ui-layouts 4-layer) ── */
+  --lg-btn-bg:            rgba(255, 255, 255, 0.06);
+  --lg-btn-overlay:       rgba(255, 255, 255, 0.10);
+  --lg-btn-highlight:     rgba(255, 255, 255, 0.55);
+  --lg-btn-specular:      inset 1px 1px 0 rgba(255, 255, 255, 0.55),
+                          inset 0 0 8px rgba(255, 255, 255, 0.15);
+  --lg-btn-shadow:        0 6px 6px rgba(0, 0, 0, 0.25),
+                          0 0 20px rgba(0, 0, 0, 0.12);
+  --lg-btn-hover-shadow:  0 8px 20px rgba(0, 0, 0, 0.35),
+                          0 0 30px rgba(99, 102, 241, 0.12);
+  --lg-btn-accent-overlay: rgba(99, 102, 241, 0.18);
+  --lg-btn-accent-specular: inset 1px 1px 0 rgba(129, 140, 248, 0.6),
+                            inset 0 0 8px rgba(129, 140, 248, 0.25);
+  --lg-btn-danger-overlay: rgba(248, 113, 113, 0.18);
+  --lg-btn-danger-specular: inset 1px 1px 0 rgba(248, 113, 113, 0.5),
+                            inset 0 0 8px rgba(248, 113, 113, 0.2);
+
   /* ── Chart Colors (dark) ── */
   --chart-grid:      rgba(255, 255, 255, 0.05);
   --chart-label:     #64748b;
@@ -204,6 +221,28 @@
                         inset -1px -1px 2px 0 rgba(255, 255, 255, 0.55);
   --glass-edge-active:  inset 2px 2px 3px 0 rgba(99, 102, 241, 0.25),
                         inset -2px -2px 3px 0 rgba(99, 102, 241, 0.25);
+
+  /* ── Liquid Glass Buttons (light mode) ── */
+  --lg-btn-bg:            rgba(255, 255, 255, 0.45);
+  --lg-btn-overlay:       rgba(255, 255, 255, 0.35);
+  --lg-btn-highlight:     rgba(255, 255, 255, 0.85);
+  --lg-btn-specular:      inset 1px 1px 0 rgba(255, 255, 255, 0.9),
+                          inset 0 0 8px rgba(255, 255, 255, 0.35);
+  --lg-btn-shadow:        0 4px 8px rgba(0, 0, 0, 0.08),
+                          0 0 16px rgba(0, 0, 0, 0.05);
+  --lg-btn-hover-shadow:  0 6px 16px rgba(0, 0, 0, 0.12),
+                          0 0 24px rgba(99, 102, 241, 0.08);
+  --lg-btn-accent-overlay: rgba(99, 102, 241, 0.15);
+  --lg-btn-accent-specular: inset 1px 1px 0 rgba(99, 102, 241, 0.5),
+                            inset 0 0 8px rgba(99, 102, 241, 0.2);
+  --lg-btn-danger-overlay: rgba(248, 113, 113, 0.15);
+  --lg-btn-danger-specular: inset 1px 1px 0 rgba(248, 113, 113, 0.45),
+                            inset 0 0 8px rgba(248, 113, 113, 0.15);
+
+  --lg-btn-primary-text:    var(--accent);
+  --lg-btn-primary-shadow:  0 1px 2px rgba(255, 255, 255, 0.5);
+  --lg-btn-danger-text:     var(--danger-text);
+  --lg-btn-danger-shadow:   0 1px 2px rgba(255, 255, 255, 0.5);
 
   /* ── Chart Colors (light) ── */
   --chart-grid:        rgba(0, 0, 0, 0.06);

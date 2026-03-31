@@ -91,12 +91,23 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
   }
 }
 
+const STATS_ICONS: Record<string, string> = {
+  'Total Events': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>`,
+  'Accidents': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
+  'Vehicles': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>`,
+  'Tickets': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`,
+  'Alerts Sent': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`
+};
+
 function renderStatsPlaceholder(): string {
   return ['Total Events', 'Accidents', 'Vehicles', 'Tickets', 'Alerts Sent'].map(label => `
       <div class="stats-card">
+        <div class="stats-card__header">
+          <div class="stats-card__label">${label}</div>
+          <div class="stats-card__icon">${STATS_ICONS[label] || ''}</div>
+        </div>
         <div class="stats-card__content">
           <div class="stats-card__value">—</div>
-          <div class="stats-card__label">${label}</div>
         </div>
       </div>
     `).join('');
@@ -124,9 +135,12 @@ function renderStatsCards(stats: SystemStats | null, alertsCount: number | null)
 
   el.innerHTML = vals.map(s => `
     <div class="stats-card">
+      <div class="stats-card__header">
+        <div class="stats-card__label">${s.label}</div>
+        <div class="stats-card__icon">${STATS_ICONS[s.label] || ''}</div>
+      </div>
       <div class="stats-card__content">
         <div class="stats-card__value">${s.value}</div>
-        <div class="stats-card__label">${s.label}</div>
       </div>
     </div>
   `).join('');

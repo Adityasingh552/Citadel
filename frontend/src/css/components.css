@@ -7,14 +7,49 @@
 .card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     box-shadow: var(--card-shadow);
     padding: var(--space-6);
-    transition: box-shadow var(--transition-base), background var(--transition-slow);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    z-index: -3;
+    pointer-events: none;
+}
+
+.card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+    opacity: 0.5;
+    z-index: -2;
+    pointer-events: none;
+    transition: opacity 0.4s ease, background 0.4s ease;
 }
 
 .card:hover {
-    box-shadow: var(--card-shadow-hover);
+    box-shadow: var(--card-shadow-hover), inset 1px 1px 0 rgba(255, 255, 255, 0.05);
+    border-color: var(--border-default);
+    transform: translateY(-2px);
+}
+
+.card:hover::after {
+    opacity: 1;
+    background: linear-gradient(90deg, transparent, var(--border-default), transparent);
 }
 
 .card__header {
@@ -32,73 +67,118 @@
 
 
 /* ═══════════════════════════════════════════
-   STATS CARD — Large prominent metrics
+   STATS CARD — Premium Liquid Glass Metrics
    ═══════════════════════════════════════════ */
 
 .stats-card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-6) var(--space-5);
+    border-radius: var(--radius-xl);
+    padding: var(--space-5) var(--space-6);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    transition: all var(--transition-base);
+    gap: var(--space-4);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
     position: relative;
     overflow: hidden;
+    isolation: isolate;
+    box-shadow: var(--card-shadow), inset 1px 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .stats-card::before {
     content: '';
     position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: -3;
+    pointer-events: none;
+}
+
+/* Subtle top glow line that shines on hover */
+.stats-card::after {
+    content: '';
+    position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
-    background: var(--border-subtle);
-    transition: background var(--transition-base);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+    transition: background 0.4s ease, opacity 0.4s ease;
+    opacity: 0.5;
 }
 
 .stats-card:hover {
     border-color: var(--border-default);
-    transform: translateY(-2px);
-    box-shadow: var(--card-shadow-hover);
+    transform: translateY(-4px);
+    box-shadow: var(--card-shadow-hover), inset 1px 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.stats-card:hover::before {
-    background: var(--accent);
+.stats-card:hover::after {
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 1;
 }
 
-.stats-card__icon {
-    display: none; /* Removed for minimal design */
-}
-
-.stats-card__content {
-    flex: 1;
-}
-
-.stats-card__value {
-    font-size: var(--metric-size);
-    font-weight: 800;
-    color: var(--text-primary);
-    line-height: 1;
-    margin-bottom: var(--space-2);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+.stats-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .stats-card__label {
     font-size: var(--text-xs);
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 500;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.stats-card__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    background: var(--bg-muted);
+    color: var(--text-secondary);
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.stats-card__icon svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2.2;
+}
+
+.stats-card:hover .stats-card__icon {
+    color: var(--accent);
+    background: var(--accent-muted);
+}
+
+.stats-card__content {
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-card__value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .stats-card__trend {
     font-size: var(--text-xs);
     font-weight: 600;
-    margin-top: var(--space-1);
+    margin-top: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
 }
 
 .stats-card__trend--up   { color: var(--success); }
@@ -135,7 +215,7 @@
 
 
 /* ═══════════════════════════════════════════
-   BUTTON — Simple, rounded, calm hover
+   BUTTON — Liquid Glass (4-layer: bend + overlay + specular + edge)
    ═══════════════════════════════════════════ */
 
 .btn {
@@ -144,58 +224,141 @@
     justify-content: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-5);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     font-weight: 600;
     font-size: var(--text-sm);
-    transition: all var(--transition-fast);
     cursor: pointer;
     border: none;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    color: var(--text-primary);
+    background: var(--lg-btn-bg);
+    box-shadow: var(--lg-btn-shadow);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+/* Layer 1: Bend — backdrop blur + SVG distortion */
+.btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    filter: url(#liquid-glass-bend);
+    z-index: -3;
+}
+
+/* Layer 2: Overlay — semi-transparent tint */
+.btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--lg-btn-overlay);
+    z-index: -2;
+}
+
+/* Layer 3+4: Specular + Edge via box-shadow */
+.btn {
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-specular);
+}
+
+.btn:hover {
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-specular);
+    transform: translateY(-2px) scale(1.02);
+}
+
+.btn:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 0.1s;
+}
+
+/* ── Primary — Accent-tinted glass ── */
+.btn--primary {
+    color: var(--lg-btn-primary-text);
+    text-shadow: var(--lg-btn-primary-shadow);
+}
+
+.btn--primary::after {
+    background: var(--lg-btn-accent-overlay);
 }
 
 .btn--primary {
-    background: var(--accent);
-    color: white;
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular);
 }
 
 .btn--primary:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-accent-specular);
 }
 
+/* ── Outline — Transparent glass with visible border ── */
 .btn--outline {
-    background: transparent;
     color: var(--text-secondary);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--glass-border);
+}
+
+.btn--outline::after {
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .btn--outline:hover {
     border-color: var(--accent);
     color: var(--accent);
-    background: var(--accent-muted);
+}
+
+.btn--outline:hover::after {
+    background: var(--lg-btn-accent-overlay);
+}
+
+/* ── Danger — Red-tinted glass ── */
+.btn--danger {
+    color: var(--lg-btn-danger-text);
+    text-shadow: var(--lg-btn-danger-shadow);
+}
+
+.btn--danger::after {
+    background: var(--lg-btn-danger-overlay);
 }
 
 .btn--danger {
-    background: var(--danger);
-    color: white;
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-danger-specular);
 }
 
 .btn--danger:hover {
-    filter: brightness(1.1);
+    box-shadow: var(--lg-btn-hover-shadow), var(--lg-btn-danger-specular);
 }
 
+/* ── Ghost — Minimal glass, appears on hover ── */
 .btn--ghost {
     background: transparent;
     color: var(--text-muted);
+    box-shadow: none;
+}
+
+.btn--ghost::before,
+.btn--ghost::after {
+    opacity: 0;
+    transition: opacity var(--transition-fast);
 }
 
 .btn--ghost:hover {
-    background: var(--bg-hover);
+    background: var(--lg-btn-bg);
     color: var(--text-primary);
+    box-shadow: var(--lg-btn-shadow), var(--lg-btn-specular);
 }
 
+.btn--ghost:hover::before,
+.btn--ghost:hover::after {
+    opacity: 1;
+}
+
+/* ── Small variant ── */
 .btn--sm {
     padding: var(--space-1) var(--space-3);
     font-size: var(--text-xs);
+    border-radius: var(--radius-md);
 }
 
 

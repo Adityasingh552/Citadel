@@ -24,7 +24,7 @@ def _build_twiml(event_details: dict) -> str:
 
     # Formulate a source description
     if event_details.get("upload_source", event_details.get("source", "manual")) == "manual":
-        source = "demo address"
+        source = "4905 Webster Street,Bound Brook,New Jersey, pincode 08805"
     else:
         source = (
             event_details.get("camera_name")
