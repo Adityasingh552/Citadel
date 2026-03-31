@@ -12,7 +12,7 @@ let refreshTimer: number | null = null;
 let detailRefreshTimer: number | null = null;
 let detailSnapshotTimer: number | null = null;
 let detailMap: any = null;
-let currentView: 'list' | 'detail' = 'list';
+let currentView: 'list' | 'detail' | 'inactive' = 'inactive';
 let cachedMonitors: MonitorStatusResponse | null = null;
 let snapshotLoading = false;
 let mainContainer: HTMLElement | null = null;
@@ -38,12 +38,12 @@ export function destroyCameras(): void {
     detailCameraStreamUrl = null;
     mainContainer = null;
     cachedMonitors = null;
-    currentView = 'list';
+    currentView = 'inactive';
 }
 
 function cleanupTimers(): void {
     if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-    if (detailRefreshTimer) { clearInterval(detailRefreshTimer); detailRefreshTimer = null; }
+    if (detailRefreshTimer) { clearTimeout(detailRefreshTimer); detailRefreshTimer = null; }
     if (detailSnapshotTimer) { clearInterval(detailSnapshotTimer); detailSnapshotTimer = null; }
     snapshotLoading = false;
 }
@@ -82,18 +82,18 @@ function renderList(container: HTMLElement): void {
         </div>
     `;
 
-    document.getElementById('cameras-refresh-btn')?.addEventListener('click', loadMonitors);
+    document.getElementById('cameras-refresh-btn')?.addEventListener('click', () => loadMonitors(true));
     document.getElementById('cameras-stop-all-btn')?.addEventListener('click', stopAllMonitors);
 
     loadMonitors();
     refreshTimer = window.setInterval(loadMonitors, 5000);
 }
 
-async function loadMonitors(): Promise<void> {
+async function loadMonitors(force: boolean = false): Promise<void> {
     // Don't refresh the list if we're in detail view
     if (currentView !== 'list') return;
     try {
-        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status');
+        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000, force });
         cachedMonitors = data;
         renderMonitorList(data);
     } catch (err) {
@@ -381,18 +381,18 @@ async function openDetail(
     // Bind stop button
     document.getElementById('camdetail-stop-btn')?.addEventListener('click', async () => {
         await stopCamera(cameraId);
-        // Refresh detail status
-        refreshDetailStatus(cameraId);
+        // Refresh detail status (force)
+        refreshDetailStatus(cameraId, true);
     });
 
     document.getElementById('camdetail-pause-btn')?.addEventListener('click', async () => {
         await pauseCamera(cameraId);
-        refreshDetailStatus(cameraId);
+        refreshDetailStatus(cameraId, true);
     });
 
     document.getElementById('camdetail-resume-btn')?.addEventListener('click', async () => {
         await resumeCamera(cameraId);
-        refreshDetailStatus(cameraId);
+        refreshDetailStatus(cameraId, true);
     });
 
     // Bind feed mode toggle
@@ -414,10 +414,8 @@ async function openDetail(
     fetchCameraInfoAndInitMap(cameraId);
     loadDetailSnapshot(cameraId);
 
-    // Auto-refresh status every 5s
-    detailRefreshTimer = window.setInterval(() => {
-        refreshDetailStatus(cameraId);
-    }, 5000);
+    // Variable-rate polling for status (active=5s, inactive/paused=30s)
+    scheduleNextDetailPoll(cameraId, monitor.active, monitor.paused);
 
     // Auto-refresh snapshot every 30s
     detailSnapshotTimer = window.setInterval(() => {
@@ -549,7 +547,7 @@ async function loadDetailSnapshot(cameraId: string): Promise<void> {
     }
 }
 
-async function refreshDetailStatus(cameraId: string): Promise<void> {
+async function refreshDetailStatus(cameraId: string, force: boolean = false): Promise<void> {
     if (currentView !== 'detail') return;
     try {
         const data = await api.get<{ status: MonitorStatus }>(`/cameras/monitor/${cameraId}/status`);
@@ -583,9 +581,26 @@ async function refreshDetailStatus(cameraId: string): Promise<void> {
         if (stopBtn) stopBtn.style.display = status.active ? '' : 'none';
         if (pauseBtn) pauseBtn.style.display = status.active && !status.paused ? '' : 'none';
         if (resumeBtn) resumeBtn.style.display = status.active && status.paused ? '' : 'none';
+
+        // Schedule next poll based on current status
+        scheduleNextDetailPoll(cameraId, status.active, status.paused);
     } catch (err) {
         console.error('Detail status refresh failed:', err);
     }
+}
+
+function scheduleNextDetailPoll(cameraId: string, isActive: boolean, isPaused: boolean): void {
+    if (currentView !== 'detail') return;
+
+    if (detailRefreshTimer) {
+        clearTimeout(detailRefreshTimer);
+        detailRefreshTimer = null;
+    }
+
+    const interval = (isActive && !isPaused) ? 5000 : 30000;
+    detailRefreshTimer = window.setTimeout(() => {
+        refreshDetailStatus(cameraId);
+    }, interval);
 }
 
 function renderDetailStats(m: MonitorStatus): void {

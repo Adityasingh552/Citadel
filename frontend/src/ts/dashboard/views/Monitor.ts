@@ -15,6 +15,7 @@ let monitorStatuses: MonitorStatus[] = [];
 let statusPollTimer: number | null = null;
 let snapshotRefreshTimer: number | null = null;
 let snapshotLoading = false;
+let isMonitorActive = false;
 
 // Video player state
 let videoPlayer: VideoPlayer | null = null;
@@ -47,6 +48,7 @@ const DISTRICT_BOUNDS: Record<string, { center: [number, number]; zoom: number }
 };
 
 export function renderMonitor(container: HTMLElement): void {
+    isMonitorActive = true;
     container.innerHTML = `
         <div class="monitor-layout">
             <!-- Left: Map + Camera selector -->
@@ -794,9 +796,11 @@ function stopStatusPolling(): void {
     }
 }
 
-async function pollAllMonitorStatuses(): Promise<void> {
+async function pollAllMonitorStatuses(force: boolean = false): Promise<void> {
+    if (!isMonitorActive) return;
     try {
-        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status');
+        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000, force });
+        if (!isMonitorActive) return;
         monitorStatuses = data.monitors;
 
         // Update active count badge
@@ -838,8 +842,10 @@ async function pollAllMonitorStatuses(): Promise<void> {
 }
 
 async function checkExistingMonitors(): Promise<void> {
+    if (!isMonitorActive) return;
     try {
-        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status');
+        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000 });
+        if (!isMonitorActive) return;
         monitorStatuses = data.monitors;
 
         if (data.active_count > 0) {
@@ -1037,6 +1043,7 @@ function getTimeSince(isoDate: string): string {
 
 // Cleanup on navigation away
 export function destroyMonitor(): void {
+    isMonitorActive = false;
     stopStatusPolling();
     if (snapshotRefreshTimer) clearInterval(snapshotRefreshTimer);
     snapshotRefreshTimer = null;
