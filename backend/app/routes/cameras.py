@@ -1,4 +1,8 @@
-"""Camera routes — live CCTV feed discovery, snapshot proxy, monitoring, and HLS stream proxy."""
+"""Camera routes — unified CCTV feed discovery, snapshot proxy, monitoring, and HLS stream proxy.
+
+Serves both Caltrans (California) and Iowa DOT cameras from the same endpoints.
+Iowa cameras are identified by the ``ia_`` prefix in their ID.
+"""
 
 import asyncio
 import logging
@@ -12,6 +16,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from app.auth import get_current_admin
 from app.services.camera_service import camera_service
+from app.services.iowa_camera_service import iowa_camera_service
 from app.services.monitor_service import monitor_service
 
 logger = logging.getLogger(__name__)
@@ -21,6 +26,7 @@ router = APIRouter(prefix="/api/cameras", tags=["cameras"])
 # ── HLS proxy config ──
 HLS_UPSTREAM_BASE = "https://wzmedia.dot.ca.gov/"
 HLS_PROXY_TIMEOUT = 15.0
+IOWA_SNAPSHOT_TIMEOUT = 10.0
 
 
 @router.get("/districts")
@@ -31,38 +37,56 @@ async def list_districts(_admin: str = Depends(get_current_admin)):
 
 @router.get("")
 async def list_cameras(
-    district: int | None = Query(None, description="Filter by district number"),
-    search: str | None = Query(None, description="Search by location name"),
+    district: int | None = Query(None, description="Filter by Caltrans district number (excludes Iowa cameras)"),
+    search: str | None = Query(None, description="Search by location name, county/region, or route"),
     limit: int = Query(100, ge=1, le=5000),
+    source: str | None = Query(None, description="Filter by source: 'caltrans' or 'iowa'"),
     _admin: str = Depends(get_current_admin),
 ):
-    """List available traffic cameras from Caltrans CCTV network.
+    """List available traffic cameras from all supported networks.
 
-    Fetches camera data from Caltrans CSV feeds with caching.
+    Returns cameras from Caltrans (California) and Iowa DOT, merged into a
+    single list. Use ``source`` to restrict to one provider. Use ``district``
+    to restrict to a specific California district (automatically excludes Iowa).
     """
-    if district is not None:
-        cameras = await asyncio.to_thread(
-            camera_service.fetch_cameras_for_district, district
-        )
+    # ── Caltrans cameras ──
+    include_caltrans = source != "iowa"
+    if include_caltrans:
+        if district is not None:
+            ca_cameras = await asyncio.to_thread(
+                camera_service.fetch_cameras_for_district, district
+            )
+        else:
+            ca_cameras = await asyncio.to_thread(camera_service.fetch_all_cameras)
     else:
-        cameras = await asyncio.to_thread(camera_service.fetch_all_cameras)
+        ca_cameras = []
 
-    # Apply search filter
+    # ── Iowa cameras (skip when district filter is active) ──
+    include_iowa = source != "caltrans" and district is None
+    if include_iowa:
+        iowa_cams = await asyncio.to_thread(iowa_camera_service.fetch_cameras)
+    else:
+        iowa_cams = []
+
+    # Merge into unified list
+    all_cameras = [c.to_dict() for c in ca_cameras] + [c.to_dict() for c in iowa_cams]
+
+    # Apply search filter (works uniformly across both sources)
     if search:
         search_lower = search.lower()
-        cameras = [
-            c for c in cameras
-            if search_lower in c.location_name.lower()
-            or search_lower in c.county.lower()
-            or search_lower in c.route.lower()
+        all_cameras = [
+            c for c in all_cameras
+            if search_lower in c.get("location_name", "").lower()
+            or search_lower in c.get("county", "").lower()
+            or search_lower in c.get("route", "").lower()
+            or search_lower in c.get("region", "").lower()
         ]
 
-    # Apply limit
-    total = len(cameras)
-    cameras = cameras[:limit]
+    total = len(all_cameras)
+    all_cameras = all_cameras[:limit]
 
     return {
-        "cameras": [c.to_dict() for c in cameras],
+        "cameras": all_cameras,
         "total": total,
         "limit": limit,
     }
@@ -75,21 +99,47 @@ async def get_camera_snapshot(
 ):
     """Fetch the latest snapshot image from a specific camera.
 
-    Returns the JPEG image directly (proxied from Caltrans).
+    Works for both Caltrans and Iowa DOT cameras. Iowa cameras are identified
+    by the ``ia_`` prefix and their images are fetched via httpx.
     """
+    # ── Caltrans ──
     camera = camera_service.get_camera_by_id(camera_id)
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found. Fetch the camera list first.")
+    if camera:
+        raw = await asyncio.to_thread(camera_service.fetch_snapshot, camera.snapshot_url)
+        if raw is None:
+            raise HTTPException(status_code=502, detail="Failed to fetch camera snapshot")
+        return Response(
+            content=raw,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
-    raw = await asyncio.to_thread(camera_service.fetch_snapshot, camera.snapshot_url)
-    if raw is None:
-        raise HTTPException(status_code=502, detail="Failed to fetch camera snapshot")
+    # ── Iowa DOT ──
+    iowa_cam = iowa_camera_service.get_camera_by_id(camera_id)
+    if iowa_cam:
+        if not iowa_cam.snapshot_url:
+            raise HTTPException(status_code=404, detail="No snapshot URL for this camera")
+        try:
+            async with httpx.AsyncClient(timeout=IOWA_SNAPSHOT_TIMEOUT, follow_redirects=True) as client:
+                resp = await client.get(iowa_cam.snapshot_url)
+            if resp.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Iowa snapshot server returned {resp.status_code}",
+                )
+            content_type = resp.headers.get("content-type", "image/jpeg")
+            return Response(
+                content=resp.content,
+                media_type=content_type,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="Iowa snapshot server timed out")
+        except httpx.RequestError as e:
+            logger.error("Iowa snapshot proxy error for %s: %s", camera_id, e)
+            raise HTTPException(status_code=502, detail="Failed to fetch Iowa camera snapshot")
 
-    return Response(
-        content=raw,
-        media_type="image/jpeg",
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
+    raise HTTPException(status_code=404, detail="Camera not found. Fetch the camera list first.")
 
 
 @router.get("/{camera_id}/snapshot-url")
@@ -97,17 +147,29 @@ async def get_snapshot_url(
     camera_id: str,
     _admin: str = Depends(get_current_admin),
 ):
-    """Get the direct Caltrans snapshot URL for a camera (for frontend display)."""
-    camera = camera_service.get_camera_by_id(camera_id)
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
+    """Get the direct snapshot URL for a camera (for frontend display).
 
-    return {
-        "camera_id": camera.id,
-        "snapshot_url": camera.snapshot_url,
-        "stream_url": camera.stream_url,
-        "location_name": camera.location_name,
-    }
+    Works for both Caltrans and Iowa DOT cameras.
+    """
+    camera = camera_service.get_camera_by_id(camera_id)
+    if camera:
+        return {
+            "camera_id": camera.id,
+            "snapshot_url": camera.snapshot_url,
+            "stream_url": camera.stream_url,
+            "location_name": camera.location_name,
+        }
+
+    iowa_cam = iowa_camera_service.get_camera_by_id(camera_id)
+    if iowa_cam:
+        return {
+            "camera_id": iowa_cam.id,
+            "snapshot_url": iowa_cam.snapshot_url,
+            "stream_url": iowa_cam.stream_url,
+            "location_name": iowa_cam.location_name,
+        }
+
+    raise HTTPException(status_code=404, detail="Camera not found")
 
 
 @router.get("/{camera_id}/info")
@@ -115,12 +177,16 @@ async def get_camera_info(
     camera_id: str,
     _admin: str = Depends(get_current_admin),
 ):
-    """Get full camera details by ID (used by the Cameras detail view)."""
+    """Get full camera details by ID — works for both Caltrans and Iowa cameras."""
     camera = camera_service.get_camera_by_id(camera_id)
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
+    if camera:
+        return {"camera": camera.to_dict()}
 
-    return {"camera": camera.to_dict()}
+    iowa_cam = iowa_camera_service.get_camera_by_id(camera_id)
+    if iowa_cam:
+        return {"camera": iowa_cam.to_dict()}
+
+    raise HTTPException(status_code=404, detail="Camera not found")
 
 
 # ── Monitoring endpoints ──────────────────────────────────────────
@@ -134,12 +200,14 @@ async def start_monitoring(
 ):
     """Start auto-monitoring a camera feed.
 
-    Uses the camera's own update_frequency for the poll interval in snapshot mode.
-    In stream mode, frames are grabbed from the HLS video stream every `stream_interval` seconds.
-    AI detection runs on each new frame. Creates events and tickets automatically.
-    Multiple cameras can be monitored simultaneously.
+    Works for both Caltrans and Iowa DOT cameras. Iowa cameras are identified
+    by the ``ia_`` prefix. Uses snapshot polling by default; pass
+    ``stream_mode=true`` to grab frames from the HLS stream.
     """
+    # Try Caltrans first, then Iowa
     camera = camera_service.get_camera_by_id(camera_id)
+    if not camera:
+        camera = iowa_camera_service.get_camera_by_id(camera_id)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found. Fetch the camera list first.")
 
@@ -221,16 +289,23 @@ async def check_snapshot_changed(
 ):
     """HEAD-based check: has the camera snapshot changed since last fetch?
 
-    Used by the frontend to avoid downloading unchanged images.
+    For Iowa cameras, always returns ``changed: true`` since their servers
+    don't reliably expose ETag / Last-Modified headers.
     """
     camera = camera_service.get_camera_by_id(camera_id)
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
+    if camera:
+        changed = await asyncio.to_thread(
+            camera_service.has_snapshot_changed, camera.snapshot_url
+        )
+        return {"camera_id": camera.id, "changed": changed}
 
-    changed = await asyncio.to_thread(
-        camera_service.has_snapshot_changed, camera.snapshot_url
-    )
-    return {"camera_id": camera.id, "changed": changed}
+    iowa_cam = iowa_camera_service.get_camera_by_id(camera_id)
+    if iowa_cam:
+        # Iowa DOT snapshot servers don't expose reliable cache headers,
+        # so we always report changed to ensure fresh images are fetched.
+        return {"camera_id": iowa_cam.id, "changed": True}
+
+    raise HTTPException(status_code=404, detail="Camera not found")
 
 
 # ── HLS Stream Proxy ──────────────────────────────────────────────
@@ -242,26 +317,42 @@ async def get_stream_info(
 ):
     """Get HLS stream information for a camera.
 
-    Returns the proxied HLS URL that the frontend can use with hls.js.
+    For Caltrans cameras, returns a proxied URL routed through the backend
+    to solve the wzmedia CORS restriction.
+
+    For Iowa DOT cameras, returns the direct HLS URL from Iowa DOT's CDN.
+    CORS policy on Iowa's CDN may vary; if playback fails, use snapshot mode.
     """
+    # ── Caltrans ──
     camera = camera_service.get_camera_by_id(camera_id)
-    if not camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
+    if camera:
+        if not camera.stream_url:
+            raise HTTPException(status_code=404, detail="No video stream available for this camera")
+        proxy_path = _stream_url_to_proxy_path(camera.stream_url)
+        if not proxy_path:
+            raise HTTPException(status_code=400, detail="Could not parse stream URL")
+        return {
+            "camera_id": camera.id,
+            "has_stream": True,
+            "proxy_url": f"/api/cameras/hls-proxy/{proxy_path}",
+            "location_name": camera.location_name,
+        }
 
-    if not camera.stream_url:
-        raise HTTPException(status_code=404, detail="No video stream available for this camera")
+    # ── Iowa DOT ──
+    iowa_cam = iowa_camera_service.get_camera_by_id(camera_id)
+    if iowa_cam:
+        if not iowa_cam.stream_url:
+            raise HTTPException(status_code=404, detail="No video stream available for this camera")
+        return {
+            "camera_id": iowa_cam.id,
+            "has_stream": True,
+            # Iowa streams are served from Iowa DOT's own CDN; proxy via iowa-hls-proxy
+            "proxy_url": f"/api/cameras/iowa-hls-proxy/{iowa_cam.stream_url.lstrip('/')}",
+            "direct_url": iowa_cam.stream_url,
+            "location_name": iowa_cam.location_name,
+        }
 
-    # Build the proxied URL path from the original stream URL
-    proxy_path = _stream_url_to_proxy_path(camera.stream_url)
-    if not proxy_path:
-        raise HTTPException(status_code=400, detail="Could not parse stream URL")
-
-    return {
-        "camera_id": camera.id,
-        "has_stream": True,
-        "proxy_url": f"/api/cameras/hls-proxy/{proxy_path}",
-        "location_name": camera.location_name,
-    }
+    raise HTTPException(status_code=404, detail="Camera not found")
 
 
 @router.get("/hls-proxy/{path:path}")
@@ -326,6 +417,64 @@ async def hls_proxy(
         raise HTTPException(status_code=502, detail="Failed to connect to stream server")
 
 
+@router.get("/iowa-hls-proxy/{path:path}")
+async def iowa_hls_proxy(
+    path: str,
+    _admin: str = Depends(get_current_admin),
+):
+    """Proxy HLS playlist and segment requests for Iowa DOT camera streams.
+
+    Iowa DOT streams may not expose CORS headers, so we proxy them just like
+    Caltrans. Handles full absolute URLs passed via the path component.
+    """
+    # Reconstruct the upstream URL (the path is the full URL minus the scheme)
+    if not path.startswith("http"):
+        path = f"https://{path}"
+
+    if not _is_safe_iowa_hls_url(path):
+        raise HTTPException(status_code=400, detail="Invalid Iowa HLS URL")
+
+    try:
+        async with httpx.AsyncClient(timeout=HLS_PROXY_TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(path)
+
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=resp.status_code,
+                detail=f"Iowa upstream returned {resp.status_code}",
+            )
+
+        content_type = resp.headers.get("content-type", "")
+
+        if path.endswith(".m3u8") or "mpegurl" in content_type.lower():
+            return Response(
+                content=resp.content,
+                media_type="application/vnd.apple.mpegurl",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+
+        media = "video/mp2t" if path.endswith(".ts") else (content_type or "application/octet-stream")
+        return Response(
+            content=resp.content,
+            media_type=media,
+            headers={
+                "Cache-Control": "public, max-age=5",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Iowa stream server timed out")
+    except httpx.RequestError as e:
+        logger.error("Iowa HLS proxy error for %s: %s", path, e)
+        raise HTTPException(status_code=502, detail="Failed to connect to Iowa stream server")
+
+
+# ── Private helpers ───────────────────────────────────────────────
+
 def _stream_url_to_proxy_path(stream_url: str) -> str | None:
     """Convert a full Caltrans stream URL to a relative proxy path.
 
@@ -353,6 +502,13 @@ def _is_safe_hls_path(path: str) -> bool:
         return False
     # Must be an HLS-related file
     return path.endswith('.m3u8') or path.endswith('.ts') or path.endswith('.m3u')
+
+
+def _is_safe_iowa_hls_url(url: str) -> bool:
+    """Basic safety check for Iowa HLS proxy URLs."""
+    if '..' in url:
+        return False
+    return url.endswith('.m3u8') or url.endswith('.ts') or url.endswith('.m3u')
 
 
 def _rewrite_m3u8_urls(playlist: str, playlist_path: str) -> str:

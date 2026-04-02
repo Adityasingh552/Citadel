@@ -311,11 +311,43 @@ class IowaCameraService:
         return cameras
 
     def get_camera_by_id(self, camera_id: str) -> Optional[IowaCameraInfo]:
-        """Look up a single Iowa camera by its ID."""
+        """Look up a single Iowa camera by its ID.
+
+        If the in-memory cache is empty (e.g. called before preload), attempts
+        to load from the local file cache before giving up.
+        """
+        if not self._cache.cameras and self._is_local_cache_fresh():
+            cameras = self._load_local_cache()
+            if cameras:
+                self._cache.cameras = cameras
+                self._cache.last_fetched = time.time()
+
         for cam in self._cache.cameras:
             if cam.id == camera_id:
                 return cam
         return None
+
+    def fetch_snapshot_bytes(self, snapshot_url: str) -> Optional[bytes]:
+        """Fetch raw JPEG bytes from an Iowa DOT camera snapshot URL.
+
+        Used by the monitor service when running Iowa cameras in snapshot mode.
+        Returns raw bytes or ``None`` on failure.
+        """
+        try:
+            resp = requests.get(
+                snapshot_url,
+                timeout=IOWA_FETCH_TIMEOUT,
+                allow_redirects=True,
+            )
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "")
+            if "image" not in content_type and len(resp.content) < 500:
+                logger.warning("Iowa snapshot doesn't look like an image: %s", content_type)
+                return None
+            return resp.content
+        except requests.RequestException as e:
+            logger.warning("Iowa snapshot fetch failed (%s): %s", snapshot_url, e)
+            return None
 
     def get_regions(self) -> list[str]:
         """Return distinct Iowa regions (equivalent of districts)."""
