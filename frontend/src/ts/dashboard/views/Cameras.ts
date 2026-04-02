@@ -433,18 +433,25 @@ async function fetchCameraInfoAndInitMap(cameraId: string): Promise<void> {
         const cam = data.camera;
 
         // Render camera info
+        const isIowa = cameraId.startsWith('ia_');
         const infoEl = document.getElementById('camdetail-info');
         if (infoEl) {
+            const locationRow = isIowa
+                ? `<div class="camdetail__info-row">
+                    <span class="camdetail__info-label">Source</span>
+                    <span class="camdetail__info-value">Iowa DOT${cam.region ? ` — ${cam.region}` : ''}</span>
+                   </div>`
+                : `<div class="camdetail__info-row">
+                    <span class="camdetail__info-label">District</span>
+                    <span class="camdetail__info-value">D${cam.district} — ${cam.district_name}</span>
+                   </div>`;
             infoEl.innerHTML = `
                 <div class="camdetail__info-grid">
                     <div class="camdetail__info-row">
                         <span class="camdetail__info-label">Name</span>
                         <span class="camdetail__info-value">${cam.location_name}</span>
                     </div>
-                    <div class="camdetail__info-row">
-                        <span class="camdetail__info-label">District</span>
-                        <span class="camdetail__info-value">D${cam.district} -- ${cam.district_name}</span>
-                    </div>
+                    ${locationRow}
                     <div class="camdetail__info-row">
                         <span class="camdetail__info-label">County</span>
                         <span class="camdetail__info-value">${cam.county}</span>
@@ -477,7 +484,12 @@ async function fetchCameraInfoAndInitMap(cameraId: string): Promise<void> {
         initDetailMap(cam.latitude, cam.longitude, cam.location_name);
 
         // Show feed mode toggle only if camera has a video stream
-        detailCameraStreamUrl = cam.stream_url || null;
+        // Load proxied stream URL from backend so both Caltrans and Iowa go through the proxy
+        detailCameraStreamUrl = null;
+        if (cam.stream_url) {
+            const streamInfo = await api.getStreamInfo(cameraId).catch(() => null);
+            detailCameraStreamUrl = streamInfo?.proxy_url ?? cam.stream_url;
+        }
         const feedToggle = document.getElementById('camdetail-feed-toggle');
         if (feedToggle) feedToggle.style.display = cam.stream_url ? '' : 'none';
     } catch (err) {
