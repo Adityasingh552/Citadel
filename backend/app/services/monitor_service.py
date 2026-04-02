@@ -142,7 +142,7 @@ class MonitorService:
             camera_id=camera.id,
             camera_name=camera.location_name,
             camera_location=(
-                f"IA — {camera.county}, {camera.route}"
+                f"IA — {getattr(camera, 'region', getattr(camera, 'county', ''))}, {camera.route}"
                 if getattr(camera, "id", "").startswith("ia_")
                 else f"D{camera.district} — {camera.county}, {camera.route}"
             ),

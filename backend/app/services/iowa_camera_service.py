@@ -228,7 +228,15 @@ class IowaCameraService:
                 latitude = float(props.get("latitude") or 0)
                 longitude = float(props.get("longitude") or 0)
 
-            if latitude == 0 or longitude == 0:
+            # Iowa bounding box (with a small margin for border cameras)
+            # Iowa: lat 40.35–43.5, lon -96.7 to -90.1
+            IOWA_LAT_MIN, IOWA_LAT_MAX = 40.0, 44.0
+            IOWA_LON_MIN, IOWA_LON_MAX = -97.5, -89.5
+            if not (IOWA_LAT_MIN <= latitude <= IOWA_LAT_MAX and IOWA_LON_MIN <= longitude <= IOWA_LON_MAX):
+                logger.debug(
+                    "Iowa: dropping camera fid=%s with out-of-bounds coordinates (%.4f, %.4f)",
+                    fid, latitude, longitude,
+                )
                 return None
 
             snapshot_url = props.get("ImageURL") or ""
