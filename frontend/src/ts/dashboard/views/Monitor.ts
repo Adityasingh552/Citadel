@@ -301,22 +301,16 @@ function getActiveMonitorIds(): Set<string> {
 }
 
 // Marker style constants
-const STYLE_DEFAULT      = { radius: 5, color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.8, weight: 1 };
-const STYLE_HAS_STREAM   = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
-const STYLE_IOWA         = { radius: 5, color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.85, weight: 1 };
-const STYLE_IOWA_STREAM  = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
-const STYLE_SELECTED     = { radius: 7, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 };
-const STYLE_MONITORED    = { radius: 7, color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1, weight: 2 };
+const STYLE_DEFAULT   = { radius: 5, color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.8,  weight: 1 };
+const STYLE_HAS_STREAM = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
+const STYLE_SELECTED  = { radius: 7, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1,    weight: 2 };
+const STYLE_MONITORED = { radius: 7, color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1,    weight: 2 };
 
-/** Determine marker colour for a camera. */
+/** Determine marker colour for a camera (same logic for Caltrans and Iowa). */
 function cameraStyle(cam: CameraInfo, isSelected: boolean, isMonitored: boolean) {
-    if (isMonitored) return STYLE_MONITORED;
-    if (isSelected)  return STYLE_SELECTED;
-    const isIowa = cam.id.startsWith('ia_');
-    const hasStream = Boolean(cam.stream_url);
-    if (isIowa && hasStream) return STYLE_IOWA_STREAM;
-    if (isIowa)              return STYLE_IOWA;
-    if (hasStream)           return STYLE_HAS_STREAM;
+    if (isMonitored)          return STYLE_MONITORED;
+    if (isSelected)           return STYLE_SELECTED;
+    if (Boolean(cam.stream_url)) return STYLE_HAS_STREAM;
     return STYLE_DEFAULT;
 }
 
