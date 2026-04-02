@@ -191,14 +191,14 @@ class ApiClient {
         return res.json();
     }
 
-    // ── Camera & Monitor API ──
+    // ── Caltrans Camera & Monitor API ──
 
-    /** Get the snapshot proxy URL for a camera (returns image bytes via backend). */
+    /** Get the snapshot proxy URL for a Caltrans camera. */
     getSnapshotProxyUrl(cameraId: string): string {
         return `${this.baseUrl}/cameras/${cameraId}/snapshot`;
     }
 
-    /** Fetch stream info for a camera. Returns direct stream URL when available. */
+    /** Fetch stream info for a Caltrans camera. */
     async getStreamInfo(cameraId: string): Promise<{ has_stream: boolean; stream_url: string } | null> {
         try {
             const data = await this.get<{ camera: { stream_url: string } }>(`/cameras/${cameraId}/info`);
@@ -212,10 +212,65 @@ class ApiClient {
         }
     }
 
+    // ── Iowa DOT Camera API ──
+
+    /** Fetch Iowa DOT cameras from ArcGIS FeatureServer. Cached server-side. */
+    async getIowaCameras(params?: {
+        region?: string;
+        search?: string;
+        camera_type?: string;
+        limit?: number;
+        force_refresh?: boolean;
+    }): Promise<{ cameras: IowaCameraData[]; total: number; source: string }> {
+        const queryParams: Record<string, string> = {};
+        if (params?.region) queryParams.region = params.region;
+        if (params?.search) queryParams.search = params.search;
+        if (params?.camera_type) queryParams.camera_type = params.camera_type;
+        if (params?.limit) queryParams.limit = String(params.limit);
+        if (params?.force_refresh) queryParams.force_refresh = 'true';
+        return this.get('/iowa/cameras', queryParams, { ttlMs: 5 * 60 * 1000 });
+    }
+
+    /** Fetch available Iowa regions. */
+    async getIowaRegions(): Promise<{ regions: string[] }> {
+        return this.get('/iowa/cameras/regions', undefined, { ttlMs: 10 * 60 * 1000 });
+    }
+
+    /** Get the snapshot proxy URL for an Iowa DOT camera. */
+    getIowaSnapshotProxyUrl(cameraId: string): string {
+        return `${this.baseUrl}/iowa/cameras/${cameraId}/snapshot`;
+    }
+
     /** Build auth headers object for use in <img> fetch or manual requests. */
     getAuthHeaders(): Record<string, string> {
         return this.authHeaders();
     }
+}
+
+// ── Iowa DOT Camera type ──
+export interface IowaCameraData {
+    id: string;
+    fid: number;
+    common_id: string;
+    source: 'iowa';
+    state: string;
+    location_name: string;
+    latitude: number;
+    longitude: number;
+    snapshot_url: string;
+    stream_url: string;
+    route: string;
+    county: string;
+    region: string;
+    direction: string;
+    camera_type: string;
+    org: string;
+    recorded: string;
+    function: string;
+    in_service: boolean;
+    update_frequency: number;
+    district: number;
+    district_name: string;
 }
 
 export const api = new ApiClient();

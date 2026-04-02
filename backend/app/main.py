@@ -13,8 +13,10 @@ from app.config import get_settings
 from app.detection.detector import AccidentDetector
 from app.detection.processor import VideoProcessor
 from app.services.camera_service import camera_service
+from app.services.iowa_camera_service import iowa_camera_service
 from app.services.monitor_service import monitor_service
 from app.routes import auth, detection, events, tickets, stats, settings, cameras, alerts
+from app.routes import iowa_cameras
 
 # Configure logging
 logging.basicConfig(
@@ -53,10 +55,15 @@ async def lifespan(app: FastAPI):
     # Initialize camera monitoring service
     monitor_service.set_dependencies(camera_service, processor)
 
-    # Pre-load camera data (uses local CSV cache — fast on reload)
+    # Pre-load Caltrans camera data (uses local CSV cache — fast on reload)
     camera_service.set_data_dir(config.data_dir)
-    logger.info("Pre-loading camera data...")
+    logger.info("Pre-loading Caltrans camera data...")
     camera_service.load_cameras_on_startup()
+
+    # Pre-load Iowa DOT camera data (ArcGIS GeoJSON — cached to disk)
+    iowa_camera_service.set_data_dir(config.data_dir)
+    logger.info("Pre-loading Iowa DOT camera data...")
+    iowa_camera_service.preload()
 
     # Restore previously active monitors from DB
     restored = monitor_service.restore_from_db()
@@ -100,6 +107,7 @@ app.include_router(tickets.router)
 app.include_router(stats.router)
 app.include_router(settings.router)
 app.include_router(cameras.router)
+app.include_router(iowa_cameras.router)
 app.include_router(alerts.router)
 
 
