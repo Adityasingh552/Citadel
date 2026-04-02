@@ -2,23 +2,27 @@
 
 import { api } from '../../api.js';
 import type { ViolationTicket, TicketListResponse } from '../../types/index.js';
-import { formatDateTime, eventTypeLabel } from '../../utils/formatters.js';
+import { formatDateTime, formatRelative, eventTypeLabel } from '../../utils/formatters.js';
 import { Toast } from '../../utils/toast.js';
 
 let currentTab = '';
+let allTickets: ViolationTicket[] = [];
 
 export async function renderTickets(container: HTMLElement): Promise<void> {
   container.innerHTML = `
+    <div class="tickets-summary" id="tickets-summary"></div>
+
     <div class="tickets-tabs" id="ticket-tabs">
       <button class="tickets-tabs__btn tickets-tabs__btn--active" data-status="">All</button>
       <button class="tickets-tabs__btn" data-status="issued">Issued</button>
       <button class="tickets-tabs__btn" data-status="pending">Pending</button>
       <button class="tickets-tabs__btn" data-status="resolved">Resolved</button>
     </div>
+
     <div class="tickets-grid" id="tickets-grid">
       <div class="empty-state">
         <div class="empty-state__icon"></div>
-        <div class="empty-state__title">Loading tickets...</div>
+        <div class="empty-state__title">Loading tickets…</div>
       </div>
     </div>
 
@@ -27,7 +31,7 @@ export async function renderTickets(container: HTMLElement): Promise<void> {
       <div class="modal" style="max-width: 520px;">
         <div class="modal__header">
           <span class="modal__title">Ticket Detail</span>
-          <button class="btn btn--outline btn--sm" id="close-modal">X</button>
+          <button class="btn btn--outline btn--sm" id="close-modal">✕</button>
         </div>
         <div class="modal__body" id="ticket-modal-body"></div>
         <div class="modal__footer" id="ticket-modal-footer"></div>
@@ -42,7 +46,7 @@ export async function renderTickets(container: HTMLElement): Promise<void> {
     document.querySelectorAll('.tickets-tabs__btn').forEach(b => b.classList.remove('tickets-tabs__btn--active'));
     btn.classList.add('tickets-tabs__btn--active');
     currentTab = btn.dataset.status || '';
-    loadTickets();
+    renderGrid(filterTickets());
   });
 
   // Close modal
@@ -55,22 +59,75 @@ export async function renderTickets(container: HTMLElement): Promise<void> {
 }
 
 async function loadTickets(): Promise<void> {
-  const params: Record<string, string> = { limit: '50' };
-  if (currentTab) params.status = currentTab;
-
   try {
-    const data = await api.get<TicketListResponse>('/tickets', params);
-    renderGrid(data.tickets);
+    const data = await api.get<TicketListResponse>('/tickets', { limit: '200' });
+    allTickets = data.tickets;
+    renderSummary();
+    renderGrid(filterTickets());
   } catch {
     const el = document.getElementById('tickets-grid');
     if (el) el.innerHTML = `
       <div class="empty-state">
         <div class="empty-state__icon"></div>
         <div class="empty-state__title">No tickets yet</div>
-        <div class="empty-state__desc">Tickets are auto-created when accidents are detected</div>
+        <div class="empty-state__desc">Tickets are auto-created when violations are detected</div>
       </div>
     `;
   }
+}
+
+function filterTickets(): ViolationTicket[] {
+  if (!currentTab) return allTickets;
+  return allTickets.filter(t => t.status === currentTab);
+}
+
+function renderSummary(): void {
+  const el = document.getElementById('tickets-summary');
+  if (!el) return;
+  const counts = { issued: 0, pending: 0, resolved: 0 };
+  for (const t of allTickets) {
+    if (t.status in counts) counts[t.status as keyof typeof counts]++;
+  }
+  el.innerHTML = `
+    <div class="tickets-summary__bar">
+      <div class="tickets-summary__stat">
+        <span class="tickets-summary__num">${allTickets.length}</span>
+        <span class="tickets-summary__label">Total</span>
+      </div>
+      <div class="tickets-summary__divider"></div>
+      <div class="tickets-summary__stat">
+        <span class="tickets-summary__num tickets-summary__num--issued">${counts.issued}</span>
+        <span class="tickets-summary__label">Issued</span>
+      </div>
+      <div class="tickets-summary__stat">
+        <span class="tickets-summary__num tickets-summary__num--pending">${counts.pending}</span>
+        <span class="tickets-summary__label">Pending</span>
+      </div>
+      <div class="tickets-summary__stat">
+        <span class="tickets-summary__num tickets-summary__num--resolved">${counts.resolved}</span>
+        <span class="tickets-summary__label">Resolved</span>
+      </div>
+    </div>
+  `;
+}
+
+/** Strip source paths / frame refs — return only the human-readable road/location part. */
+function locationShort(info: string | null | undefined): string {
+  if (!info) return 'Unknown location';
+  const clean = info
+    .replace(/Source:\s*\S+/gi, '')
+    .replace(/Frame:\s*\d+/gi, '')
+    .trim()
+    .replace(/\s{2,}/g, ' ');
+  return clean || info;
+}
+
+/** Returns null if the description is the generic boilerplate. */
+function vehicleDesc(desc: string | null | undefined): string | null {
+  if (!desc) return null;
+  const boilerplate = ['vehicles involved in detected accident', 'no vehicle description'];
+  if (boilerplate.includes(desc.toLowerCase().trim())) return null;
+  return desc;
 }
 
 function renderGrid(tickets: ViolationTicket[]): void {
@@ -82,30 +139,34 @@ function renderGrid(tickets: ViolationTicket[]): void {
       <div class="empty-state">
         <div class="empty-state__icon"></div>
         <div class="empty-state__title">No tickets found</div>
-        <div class="empty-state__desc">${currentTab ? 'No tickets with this status' : 'Upload a video to start detecting'}</div>
+        <div class="empty-state__desc">${currentTab ? `No ${currentTab} tickets` : 'Upload a video to start detecting'}</div>
       </div>
     `;
     return;
   }
 
-  el.innerHTML = tickets.map(t => `
-    <div class="ticket-card" data-ticket-id="${t.id}" style="cursor: pointer;" title="Click for details">
-      <div class="ticket-card__header ticket-card__header--${t.violation_type}">
-        ${eventTypeLabel(t.violation_type)} Violation
-      </div>
-      <div class="ticket-card__body">
-        <div class="ticket-card__id">TKT-${t.id.slice(0, 8).toUpperCase()}</div>
-        <div class="ticket-card__info">${t.vehicle_description || 'No vehicle description'}</div>
-        <div class="ticket-card__info">${t.location_info || 'Unknown location'}</div>
-      </div>
-      <div class="ticket-card__footer">
-        <span>${formatDateTime(t.issued_at)}</span>
-        <span class="badge badge--${t.status}">${t.status}</span>
+  el.innerHTML = tickets.map(t => {
+    const loc = locationShort(t.location_info);
+    const veh = vehicleDesc(t.vehicle_description);
+    const type = eventTypeLabel(t.violation_type);
+    return `
+    <div class="ticket-card ticket-card--${t.violation_type}" data-ticket-id="${t.id}" title="Click for details">
+      <div class="ticket-card__accent-bar"></div>
+      <div class="ticket-card__inner">
+        <div class="ticket-card__top">
+          <code class="ticket-card__id">TKT-${t.id.slice(0, 8).toUpperCase()}</code>
+          <span class="badge badge--${t.violation_type}">${type}</span>
+        </div>
+        <div class="ticket-card__location">${loc}</div>
+        ${veh ? `<div class="ticket-card__vehicle">${veh}</div>` : ''}
+        <div class="ticket-card__footer">
+          <span class="ticket-card__time">${formatRelative(t.issued_at)}</span>
+          <span class="badge badge--${t.status}">${t.status}</span>
+        </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 
-  // Card click → show detail modal
   el.querySelectorAll('.ticket-card').forEach(card => {
     card.addEventListener('click', () => {
       const id = (card as HTMLElement).dataset.ticketId!;
@@ -122,16 +183,18 @@ function showTicketDetail(ticket: ViolationTicket): void {
   if (!modal || !body || !footer) return;
 
   const statusColors: Record<string, string> = {
-    issued: 'var(--info)',
-    pending: 'var(--warning)',
+    issued:   'var(--info)',
+    pending:  'var(--warning)',
     resolved: 'var(--success)',
   };
 
+  const loc = locationShort(ticket.location_info);
+  const veh = vehicleDesc(ticket.vehicle_description);
+
   body.innerHTML = `
     <div style="display: grid; gap: var(--space-4);">
-      <!-- Header info -->
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: var(--text-lg); font-weight: 700;">
+        <span style="font-size: var(--text-lg); font-weight: 700; font-family: monospace;">
           TKT-${ticket.id.slice(0, 8).toUpperCase()}
         </span>
         <span class="badge badge--${ticket.status}" style="font-size: var(--text-sm);">
@@ -139,19 +202,17 @@ function showTicketDetail(ticket: ViolationTicket): void {
         </span>
       </div>
 
-      <!-- Evidence image -->
       ${ticket.evidence_path
-      ? `<div style="border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border);">
-            <img src="/evidence/${ticket.evidence_path}" alt="Evidence"
-              style="width: 100%; max-height: 240px; object-fit: cover;" />
-          </div>`
-      : ''
-    }
+        ? `<div style="border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border);">
+             <img src="/evidence/${ticket.evidence_path}" alt="Evidence"
+               style="width: 100%; max-height: 240px; object-fit: cover;" />
+           </div>`
+        : ''
+      }
 
-      <!-- Details grid -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
         <div>
-          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Violation Type</div>
+          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Violation</div>
           <span class="badge badge--${ticket.violation_type}">${eventTypeLabel(ticket.violation_type)}</span>
         </div>
         <div>
@@ -159,7 +220,7 @@ function showTicketDetail(ticket: ViolationTicket): void {
           <span style="color: ${statusColors[ticket.status] || 'inherit'}; font-weight: 600;">${ticket.status}</span>
         </div>
         <div>
-          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Issued At</div>
+          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Issued</div>
           <div style="font-size: var(--text-sm);">${formatDateTime(ticket.issued_at)}</div>
         </div>
         <div>
@@ -167,13 +228,14 @@ function showTicketDetail(ticket: ViolationTicket): void {
           <div style="font-size: var(--text-sm);">${formatDateTime(ticket.created_at)}</div>
         </div>
         <div style="grid-column: 1 / -1;">
-          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Vehicle</div>
-          <div style="font-size: var(--text-sm);">${ticket.vehicle_description || 'Not identified'}</div>
-        </div>
-        <div style="grid-column: 1 / -1;">
           <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Location</div>
-          <div style="font-size: var(--text-sm);">${ticket.location_info || 'Unknown'}</div>
+          <div style="font-size: var(--text-sm);">${loc}</div>
         </div>
+        ${veh ? `
+        <div style="grid-column: 1 / -1;">
+          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Vehicle</div>
+          <div style="font-size: var(--text-sm);">${veh}</div>
+        </div>` : ''}
         <div style="grid-column: 1 / -1;">
           <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px;">Ticket ID</div>
           <div style="font-size: var(--text-xs); font-family: monospace; color: var(--text-muted);">${ticket.id}</div>
@@ -186,9 +248,8 @@ function showTicketDetail(ticket: ViolationTicket): void {
     </div>
   `;
 
-  // Footer with status change buttons
   const nextStatus: Record<string, string> = {
-    issued: 'pending',
+    issued:  'pending',
     pending: 'resolved',
   };
   const next = nextStatus[ticket.status];
@@ -196,15 +257,18 @@ function showTicketDetail(ticket: ViolationTicket): void {
   footer.innerHTML = next
     ? `<button class="btn btn--primary btn--sm" id="advance-status">
         Mark as ${next.charAt(0).toUpperCase() + next.slice(1)}
-      </button>`
-    : `<span style="font-size: var(--text-sm); color: var(--success);">Resolved</span>`;
+       </button>`
+    : `<span style="font-size: var(--text-sm); color: var(--success);">✓ Resolved</span>`;
 
   if (next) {
     document.getElementById('advance-status')?.addEventListener('click', async () => {
       try {
         await api.patch(`/tickets/${ticket.id}`, { status: next });
+        // Optimistic update — no full reload needed
+        allTickets = allTickets.map(t => t.id === ticket.id ? { ...t, status: next } : t);
+        renderSummary();
+        renderGrid(filterTickets());
         closeModal();
-        await loadTickets();
       } catch {
         Toast.show('Failed to update ticket status', 'error');
       }
