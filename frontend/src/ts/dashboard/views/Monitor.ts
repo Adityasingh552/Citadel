@@ -28,23 +28,24 @@ let markerMap: Map<string, any> = new Map();
 // Track if initial fitBounds has been done
 let initialBoundsDone = false;
 
-const DEFAULT_CENTER: [number, number] = [36.78, -119.42]; // Central California
-const DEFAULT_ZOOM = 6;
+const DEFAULT_CENTER: [number, number] = [39.5, -99.0]; // Continental US
+const DEFAULT_ZOOM = 5;
 
 // District boundary centers and zoom levels (approximate)
 const DISTRICT_BOUNDS: Record<string, { center: [number, number]; zoom: number }> = {
-    '1': { center: [40.80, -124.16], zoom: 8 },   // Northwest
-    '2': { center: [40.58, -122.39], zoom: 8 },   // Northeast
-    '3': { center: [38.58, -121.49], zoom: 10 },  // Sacramento
-    '4': { center: [37.77, -122.42], zoom: 10 },  // SF Bay Area
-    '5': { center: [36.97, -122.03], zoom: 8 },   // Central Coast
-    '6': { center: [36.74, -119.79], zoom: 9 },   // Fresno
-    '7': { center: [34.05, -118.25], zoom: 9 },   // Los Angeles
-    '8': { center: [34.10, -117.29], zoom: 9 },   // San Bernardino
-    '9': { center: [37.36, -118.40], zoom: 8 },   // Bishop
-    '10': { center: [37.96, -121.29], zoom: 10 }, // Stockton
-    '11': { center: [32.72, -117.16], zoom: 10 }, // San Diego
-    '12': { center: [33.74, -117.87], zoom: 10 }, // Orange County
+    '1':    { center: [40.80, -124.16], zoom: 8 },   // NW California
+    '2':    { center: [40.58, -122.39], zoom: 8 },   // NE California
+    '3':    { center: [38.58, -121.49], zoom: 10 },  // Sacramento
+    '4':    { center: [37.77, -122.42], zoom: 10 },  // SF Bay Area
+    '5':    { center: [36.97, -122.03], zoom: 8 },   // Central Coast
+    '6':    { center: [36.74, -119.79], zoom: 9 },   // Fresno
+    '7':    { center: [34.05, -118.25], zoom: 9 },   // Los Angeles
+    '8':    { center: [34.10, -117.29], zoom: 9 },   // San Bernardino
+    '9':    { center: [37.36, -118.40], zoom: 8 },   // Bishop
+    '10':   { center: [37.96, -121.29], zoom: 10 },  // Stockton
+    '11':   { center: [32.72, -117.16], zoom: 10 },  // San Diego
+    '12':   { center: [33.74, -117.87], zoom: 10 },  // Orange County
+    'iowa': { center: [42.00, -93.50],  zoom: 7 },   // Iowa state
 };
 
 export function renderMonitor(container: HTMLElement): void {
@@ -56,19 +57,24 @@ export function renderMonitor(container: HTMLElement): void {
                 <div class="monitor-map-toolbar">
                     <div class="monitor-toolbar-left">
                         <select id="district-select" class="monitor-select">
-                            <option value="">All Districts</option>
-                            <option value="1">D1 — Northwest</option>
-                            <option value="2">D2 — Northeast</option>
-                            <option value="3">D3 — Sacramento</option>
-                            <option value="4">D4 — SF Bay Area</option>
-                            <option value="5">D5 — Central Coast</option>
-                            <option value="6">D6 — Fresno</option>
-                            <option value="7">D7 — Los Angeles</option>
-                            <option value="8">D8 — San Bernardino</option>
-                            <option value="9">D9 — Bishop</option>
-                            <option value="10">D10 — Stockton</option>
-                            <option value="11">D11 — San Diego</option>
-                            <option value="12">D12 — Orange County</option>
+                            <option value="">All Cameras</option>
+                            <optgroup label="California — Caltrans">
+                                <option value="1">D1 — Northwest</option>
+                                <option value="2">D2 — Northeast</option>
+                                <option value="3">D3 — Sacramento</option>
+                                <option value="4">D4 — SF Bay Area</option>
+                                <option value="5">D5 — Central Coast</option>
+                                <option value="6">D6 — Fresno</option>
+                                <option value="7">D7 — Los Angeles</option>
+                                <option value="8">D8 — San Bernardino</option>
+                                <option value="9">D9 — Bishop</option>
+                                <option value="10">D10 — Stockton</option>
+                                <option value="11">D11 — San Diego</option>
+                                <option value="12">D12 — Orange County</option>
+                            </optgroup>
+                            <optgroup label="Iowa — Iowa DOT">
+                                <option value="iowa">Iowa State</option>
+                            </optgroup>
                         </select>
                         <input type="text" id="camera-search" class="monitor-search"
                                placeholder="Search cameras..." />
@@ -214,12 +220,24 @@ function bindEvents(): void {
     document.getElementById('district-select')?.addEventListener('change', (e) => {
         const district = (e.target as HTMLSelectElement).value || undefined;
 
+        if (district === 'iowa') {
+            // Filter to only Iowa cameras on the map
+            filterCamerasBySource('iowa');
+            if (map && DISTRICT_BOUNDS['iowa']) {
+                const { center, zoom } = DISTRICT_BOUNDS['iowa'];
+                map.setView(center, zoom);
+            }
+            return;
+        }
+
+        // For California districts, filter to that district's cameras on map
+        filterCamerasBySource(district ? 'caltrans' : 'all', district);
+
         if (district && DISTRICT_BOUNDS[district] && map) {
-            // Zoom to district — pins stay on map
             const { center, zoom } = DISTRICT_BOUNDS[district];
             map.setView(center, zoom);
         } else if (map && cameras.length > 0) {
-            // "All Districts" — fit bounds to show everything
+            // "All Cameras" — fit bounds to show everything
             const bounds = L.latLngBounds(cameras.map((c: CameraInfo) => [c.latitude, c.longitude]));
             map.fitBounds(bounds, { padding: [30, 30] });
         }
@@ -283,10 +301,24 @@ function getActiveMonitorIds(): Set<string> {
 }
 
 // Marker style constants
-const STYLE_DEFAULT = { radius: 5, color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.8, weight: 1 };
-const STYLE_HAS_STREAM = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
-const STYLE_SELECTED = { radius: 7, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 };
-const STYLE_MONITORED = { radius: 7, color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1, weight: 2 };
+const STYLE_DEFAULT      = { radius: 5, color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.8, weight: 1 };
+const STYLE_HAS_STREAM   = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
+const STYLE_IOWA         = { radius: 5, color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.85, weight: 1 };
+const STYLE_IOWA_STREAM  = { radius: 5, color: '#7c3aed', fillColor: '#a855f7', fillOpacity: 0.85, weight: 1 };
+const STYLE_SELECTED     = { radius: 7, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 };
+const STYLE_MONITORED    = { radius: 7, color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1, weight: 2 };
+
+/** Determine marker colour for a camera. */
+function cameraStyle(cam: CameraInfo, isSelected: boolean, isMonitored: boolean) {
+    if (isMonitored) return STYLE_MONITORED;
+    if (isSelected)  return STYLE_SELECTED;
+    const isIowa = cam.id.startsWith('ia_');
+    const hasStream = Boolean(cam.stream_url);
+    if (isIowa && hasStream) return STYLE_IOWA_STREAM;
+    if (isIowa)              return STYLE_IOWA;
+    if (hasStream)           return STYLE_HAS_STREAM;
+    return STYLE_DEFAULT;
+}
 
 function plotCamerasOnMap(cams: CameraInfo[]): void {
     if (!map || !markerLayer) return;
@@ -298,19 +330,20 @@ function plotCamerasOnMap(cams: CameraInfo[]): void {
     const activeIds = getActiveMonitorIds();
 
     cams.forEach(cam => {
-        const isSelected = selectedCamera?.id === cam.id;
+        const isSelected  = selectedCamera?.id === cam.id;
         const isMonitored = activeIds.has(cam.id);
-        const hasStream = Boolean(cam.stream_url);
-        const style = isMonitored ? STYLE_MONITORED
-            : isSelected ? STYLE_SELECTED
-            : hasStream ? STYLE_HAS_STREAM
-            : STYLE_DEFAULT;
+        const style = cameraStyle(cam, isSelected, isMonitored);
 
+        const isIowa = cam.id.startsWith('ia_');
+        const regionLabel = isIowa
+            ? `${cam.county} &bull; ${cam.route}${cam.region ? ` &bull; ${cam.region}` : ''}<br/><em>Iowa DOT</em>`
+            : `${cam.county} &bull; ${cam.route}<br/><em>District ${cam.district} — ${cam.district_name}</em>`;
+
+        const hasStream = Boolean(cam.stream_url);
         const marker = L.circleMarker([cam.latitude, cam.longitude], style)
             .bindPopup(`
                 <strong>${cam.location_name}</strong><br/>
-                ${cam.county} &bull; ${cam.route}<br/>
-                <em>District ${cam.district} — ${cam.district_name}</em>
+                ${regionLabel}
                 ${hasStream ? '<br/><span style="color:#a855f7;">Video Stream Available</span>' : ''}
                 ${isMonitored ? '<br/><strong style="color:#ef4444;">Monitoring Active</strong>' : ''}
             `);
@@ -335,14 +368,11 @@ function updateMarkerStyles(): void {
     const activeIds = getActiveMonitorIds();
 
     markerMap.forEach((marker, camId) => {
-        const isSelected = selectedCamera?.id === camId;
+        const isSelected  = selectedCamera?.id === camId;
         const isMonitored = activeIds.has(camId);
         const cam = cameras.find(c => c.id === camId);
-        const hasStream = Boolean(cam?.stream_url);
-        const style = isMonitored ? STYLE_MONITORED
-            : isSelected ? STYLE_SELECTED
-            : hasStream ? STYLE_HAS_STREAM
-            : STYLE_DEFAULT;
+        if (!cam) return;
+        const style = cameraStyle(cam, isSelected, isMonitored);
         marker.setStyle(style);
         marker.setRadius(style.radius);
     });
@@ -368,11 +398,40 @@ function filterCamerasOnMap(query: string): void {
 
         const matches = cam.location_name.toLowerCase().includes(q)
             || cam.county.toLowerCase().includes(q)
-            || cam.route.toLowerCase().includes(q);
+            || cam.route.toLowerCase().includes(q)
+            || (cam.region?.toLowerCase() ?? '').includes(q);  // Iowa region field
 
         if (matches && !markerLayer.hasLayer(marker)) {
             markerLayer.addLayer(marker);
         } else if (!matches && markerLayer.hasLayer(marker)) {
+            markerLayer.removeLayer(marker);
+        }
+    });
+}
+
+/** Show/hide map markers based on source (all | caltrans | iowa) and optional district. */
+function filterCamerasBySource(source: 'all' | 'caltrans' | 'iowa', district?: string): void {
+    if (!markerLayer) return;
+
+    cameras.forEach(cam => {
+        const marker = markerMap.get(cam.id);
+        if (!marker) return;
+
+        const isIowa = cam.id.startsWith('ia_');
+        let show = true;
+
+        if (source === 'iowa') {
+            show = isIowa;
+        } else if (source === 'caltrans') {
+            show = !isIowa;
+            if (show && district) {
+                show = String(cam.district) === district;
+            }
+        }
+
+        if (show && !markerLayer.hasLayer(marker)) {
+            markerLayer.addLayer(marker);
+        } else if (!show && markerLayer.hasLayer(marker)) {
             markerLayer.removeLayer(marker);
         }
     });
@@ -509,6 +568,10 @@ function selectCamera(cam: CameraInfo): void {
     // Update camera info card
     const infoBody = document.getElementById('camera-info-body');
     if (infoBody) {
+        const isIowa = cam.id.startsWith('ia_');
+        const locationLine = isIowa
+            ? `<div class="monitor-cam-info__district">Iowa DOT${cam.region ? ` &mdash; ${cam.region}` : ''}</div>`
+            : `<div class="monitor-cam-info__district">District ${cam.district} &mdash; ${cam.district_name}</div>`;
         infoBody.innerHTML = `
             <div class="monitor-cam-info">
                 <div class="monitor-cam-info__name">${cam.location_name}</div>
@@ -517,9 +580,7 @@ function selectCamera(cam: CameraInfo): void {
                     <span>${cam.route}</span>
                     <span>${cam.direction || 'N/A'}</span>
                 </div>
-                <div class="monitor-cam-info__district">
-                    District ${cam.district} — ${cam.district_name}
-                </div>
+                ${locationLine}
                 <div class="monitor-cam-info__coords">
                     ${cam.latitude.toFixed(4)}, ${cam.longitude.toFixed(4)}
                 </div>
