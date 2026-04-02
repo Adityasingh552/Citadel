@@ -52,8 +52,8 @@ async def lifespan(app: FastAPI):
     processor = VideoProcessor(detector)
     detection.set_processor(processor)
 
-    # Initialize camera monitoring service
-    monitor_service.set_dependencies(camera_service, processor)
+    # Initialize camera monitoring service (supports both Caltrans + Iowa cameras)
+    monitor_service.set_dependencies(camera_service, processor, iowa_camera_service)
 
     # Pre-load Caltrans camera data (uses local CSV cache — fast on reload)
     camera_service.set_data_dir(config.data_dir)

@@ -20,6 +20,7 @@ from app.detection.detector import AccidentDetector, Detection
 from app.detection.processor import VideoProcessor
 from app.models import ActiveMonitor
 from app.services.camera_service import CameraService, CameraInfo, StreamCapture
+from app.services.iowa_camera_service import IowaCameraService
 from app.services import event_service, ticket_service
 from app.routes.settings import get_runtime_settings
 
@@ -90,15 +91,18 @@ class MonitorService:
         self._monitors: dict[str, _CameraMonitor] = {}  # camera_id -> monitor
         self._lock = threading.Lock()
         self._camera_service: Optional[CameraService] = None
+        self._iowa_camera_service: Optional[IowaCameraService] = None
         self._processor: Optional[VideoProcessor] = None
 
     def set_dependencies(
         self,
         camera_service: CameraService,
         processor: VideoProcessor,
+        iowa_camera_service: Optional[IowaCameraService] = None,
     ):
         """Inject dependencies (called during app lifespan startup)."""
         self._camera_service = camera_service
+        self._iowa_camera_service = iowa_camera_service
         self._processor = processor
 
     # ── Public API ──
@@ -137,7 +141,11 @@ class MonitorService:
             paused=paused,
             camera_id=camera.id,
             camera_name=camera.location_name,
-            camera_location=f"D{camera.district} — {camera.county}, {camera.route}",
+            camera_location=(
+                f"IA — {camera.county}, {camera.route}"
+                if getattr(camera, "id", "").startswith("ia_")
+                else f"D{camera.district} — {camera.county}, {camera.route}"
+            ),
             started_at=datetime.now(timezone.utc).isoformat(),
             poll_interval=poll_seconds,
             last_snapshot_url=camera.snapshot_url,
@@ -375,13 +383,20 @@ class MonitorService:
         logger.info("Restoring %d monitors from previous session...", len(camera_ids))
         restored = 0
         for cid, s_mode, s_interval, s_paused in camera_ids:
+            # Try Caltrans first, then Iowa (Iowa IDs start with 'ia_')
             camera = self._camera_service.get_camera_by_id(cid)
+            if camera is None and self._iowa_camera_service and cid.startswith("ia_"):
+                camera = self._iowa_camera_service.get_camera_by_id(cid)
+
             if camera:
                 self.start(camera, stream_mode=s_mode, stream_interval=s_interval, paused=s_paused)
                 restored += 1
-                logger.info("Restored monitor: %s (stream_mode=%s, paused=%s)", camera.location_name, s_mode, s_paused)
+                logger.info(
+                    "Restored monitor: %s (stream_mode=%s, paused=%s)",
+                    camera.location_name, s_mode, s_paused,
+                )
             else:
-                logger.warning("Cannot restore monitor for unknown camera %s — removing", cid)
+                logger.warning("Cannot restore monitor for unknown camera %s — removing from DB", cid)
                 self._persist_stop(cid)
 
         logger.info("Monitor restore complete: %d/%d restored", restored, len(camera_ids))
