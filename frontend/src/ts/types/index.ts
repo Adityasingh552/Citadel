@@ -106,6 +106,8 @@ export interface ChartDataPoint {
 
 export interface CameraInfo {
     id: string;
+    /** 'caltrans' for California cameras; 'iowa' for Iowa DOT cameras. Absent on older cached data. */
+    source?: 'caltrans' | 'iowa';
     district: number;
     district_name: string;
     location_name: string;
@@ -114,10 +116,16 @@ export interface CameraInfo {
     snapshot_url: string;
     stream_url: string;
     direction: string;
-    county: string;
+    county: string;        // Iowa: mapped from 'region'
     route: string;
     in_service: boolean;
-    update_frequency: number;  // minutes — from Caltrans currentImageUpdateFrequency
+    update_frequency: number;  // minutes
+    // Iowa-specific (undefined for Caltrans cameras)
+    region?: string;           // Iowa DOT region name
+    state?: string;            // 'Iowa'
+    common_id?: string;        // e.g. 'DQTV17'
+    camera_type?: string;      // 'Iowa DOT' | 'RWIS' | ...
+    fid?: number;              // ArcGIS feature ID
 }
 
 export interface CameraListResponse {
