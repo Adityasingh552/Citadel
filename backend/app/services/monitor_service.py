@@ -510,6 +510,8 @@ class MonitorService:
                     metadata={
                         "camera_id": camera.id,
                         "camera_name": camera.location_name,
+                        "camera_stream_url": camera.stream_url,
+                        "camera_snapshot_url": camera.snapshot_url,
                         "camera_district": getattr(camera, "district", 0),
                         "camera_county": camera.county,
                         "camera_route": camera.route,
@@ -665,6 +667,8 @@ class MonitorService:
                     metadata={
                         "camera_id": camera.id,
                         "camera_name": camera.location_name,
+                        "camera_stream_url": camera.stream_url,
+                        "camera_snapshot_url": camera.snapshot_url,
                         "camera_district": getattr(camera, "district", 0),
                         "camera_county": camera.county,
                         "camera_route": camera.route,

@@ -85,6 +85,10 @@ def _build_payload(event_details: dict) -> dict:
     camera_name = event_details.get("camera_name", "")
     source_video = event_details.get("source_video", "")
     event_id = event_details.get("event_id", "")
+    camera_stream_url = event_details.get("camera_stream_url", "")
+    camera_snapshot_url = event_details.get("camera_snapshot_url", "")
+    camera_lat = event_details.get("camera_lat")
+    camera_lng = event_details.get("camera_lng")
 
     from app.config import get_settings
     settings = get_settings()
@@ -111,7 +115,17 @@ def _build_payload(event_details: dict) -> dict:
         # Absolute links for external use (Telegram, Email)
         payload["cctv_live_feed_url"] = f"{base_url}/api/cameras/{camera_id}/snapshot"
         payload["cctv_info_url"] = f"{base_url}/api/cameras/{camera_id}/info"
-        logger.info("Built CCTV Live URL: %s", payload["cctv_live_feed_url"])
+        # Include the actual HLS stream URL from CSV if available
+        if camera_stream_url:
+            payload["cctv_stream_url"] = camera_stream_url
+        # Include snapshot URL from CSV if available
+        if camera_snapshot_url:
+            payload["cctv_snapshot_csv_url"] = camera_snapshot_url
+        # Include camera location
+        if camera_lat and camera_lng:
+            payload["camera_lat"] = camera_lat
+            payload["camera_lng"] = camera_lng
+        logger.info("Built CCTV URLs: Live Feed=%s, Stream=%s", payload["cctv_live_feed_url"], camera_stream_url or "N/A")
     elif source_video:
         payload["source_file"] = source_video
 
@@ -162,7 +176,19 @@ def _build_email_html(payload: dict, event_details: dict) -> str:
         <table style="border-collapse:collapse;font-size:14px;">
             <tr><td style="padding:4px 12px;font-weight:600;">Camera ID</td><td style="padding:4px 12px;">{payload['camera_id']}</td></tr>
             <tr><td style="padding:4px 12px;font-weight:600;">Camera Name</td><td style="padding:4px 12px;">{payload.get('camera_name','—')}</td></tr>
-            <tr><td style="padding:4px 12px;font-weight:600;">Live Feed</td><td style="padding:4px 12px;"><a href="{payload.get('cctv_live_feed_url','')}">View Live Snapshot</a></td></tr>
+            <tr><td style="padding:4px 12px;font-weight:600;">API Snapshot</td><td style="padding:4px 12px;"><a href="{payload.get('cctv_live_feed_url','')}">View Snapshot</a></td></tr>"""
+
+        # Add HLS stream link if available
+        if payload.get('cctv_stream_url'):
+            camera_html += f"""
+            <tr><td style="padding:4px 12px;font-weight:600;">HLS Stream</td><td style="padding:4px 12px;"><a href="{payload.get('cctv_stream_url','')}">Watch Stream</a></td></tr>"""
+
+        # Add direct snapshot link if available
+        if payload.get('cctv_snapshot_csv_url'):
+            camera_html += f"""
+            <tr><td style="padding:4px 12px;font-weight:600;">Direct Snapshot</td><td style="padding:4px 12px;"><a href="{payload.get('cctv_snapshot_csv_url','')}">View Image</a></td></tr>"""
+
+        camera_html += """
         </table>"""
 
     evidence_note = ""
@@ -336,34 +362,29 @@ def _send_telegram(config: dict, event_details: dict, payload: dict) -> dict:
         caption += f"<b>Source:</b> {html.escape(source)}\n"
         caption += f"<b>Timestamp:</b> {ts}\n"
 
-        # Add Evidence Link
-        evidence_url = payload.get("evidence_image")
-        if evidence_url:
-            caption += f"\n🖼 <b>Evidence Frame:</b>\n{evidence_url}\n"
-
         if payload.get("camera_id"):
             cam_name = html.escape(payload.get('camera_name', '—'))
             caption += f"\n📹 <b>CCTV Source</b>\n"
             caption += f"<b>Camera ID:</b> <code>{payload['camera_id']}</code>\n"
             caption += f"<b>Name:</b> {cam_name}\n"
-            cctv_live_url = payload.get('cctv_live_feed_url')
-            if cctv_live_url:
-                caption += f"🔗 <b>Live Feed:</b>\n{cctv_live_url}\n"
+            # Add the actual HLS stream URL from CSV if available
+            stream_url = payload.get('cctv_stream_url')
+            if stream_url:
+                caption += f"\n🎬 <b>HLS Stream:</b>\n{stream_url}\n"
+            # Add Google Maps link if location is available
+            camera_lat = payload.get('camera_lat')
+            camera_lng = payload.get('camera_lng')
+            if camera_lat and camera_lng:
+                maps_url = f"https://www.google.com/maps?q={camera_lat},{camera_lng}"
+                caption += f"\n📍 <b>Location:</b>\n{maps_url}\n"
 
-        bboxes = payload.get("bounding_boxes", [])
-        if bboxes:
-            caption += f"\n🔍 <b>Detections:</b>\n"
-            for i, box in enumerate(bboxes):
-                label = html.escape(box.get('label', '—'))
-                box_conf = box.get('confidence', 0)
-                box_conf_pct = f"{box_conf:.1%}" if isinstance(box_conf, float) else box_conf
-                caption += f"{i+1}. {label} ({box_conf_pct})\n"
                 
         send_message_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         send_photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-        
+
         evidence_path = event_details.get("evidence_path")
-        
+        resp = None
+
         with httpx.Client(timeout=30.0) as client:
             try:
                 if evidence_path:
@@ -379,21 +400,23 @@ def _send_telegram(config: dict, event_details: dict, payload: dict) -> dict:
                         resp = client.post(send_message_url, json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
                 else:
                     resp = client.post(send_message_url, json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
-                    
-                if resp.status_code >= 400:
+
+                if resp and resp.status_code >= 400:
                     logger.error("Telegram API Error: %d - %s", resp.status_code, resp.text)
                 else:
                     logger.info("Telegram alert sent successfully")
             except Exception as e:
                 logger.error("Failed to send Telegram alert: %s", str(e))
-                
-        if resp.status_code < 400:
+
+        if resp and resp.status_code < 400:
             logger.info("Telegram alert sent to chat %s", chat_id)
             return {"status": "sent", "error": None, "status_code": resp.status_code}
-        else:
+        elif resp:
             err = f"HTTP {resp.status_code}: {resp.text[:200]}"
             logger.warning("Telegram alert returned error: %s", err)
             return {"status": "failed", "error": err, "status_code": resp.status_code}
+        else:
+            return {"status": "failed", "error": "No response object created"}
 
     except Exception as exc:
         logger.error("Telegram alert failed: %s", exc)

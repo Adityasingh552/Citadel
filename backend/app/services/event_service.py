@@ -67,6 +67,10 @@ def create_event(
             "source": source,
             "camera_id": (metadata or {}).get("camera_id"),
             "camera_name": (metadata or {}).get("camera_name", ""),
+            "camera_stream_url": (metadata or {}).get("camera_stream_url", ""),
+            "camera_snapshot_url": (metadata or {}).get("camera_snapshot_url", ""),
+            "camera_lat": (metadata or {}).get("camera_lat"),
+            "camera_lng": (metadata or {}).get("camera_lng"),
         }
         dispatch_alerts(details_for_alerts, db)
     # ─────────────────────────────────────────────────────────────────
