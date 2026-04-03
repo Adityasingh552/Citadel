@@ -42,7 +42,7 @@ export function destroyCameras(): void {
 }
 
 function cleanupTimers(): void {
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
     if (detailRefreshTimer) { clearTimeout(detailRefreshTimer); detailRefreshTimer = null; }
     if (detailSnapshotTimer) { clearInterval(detailSnapshotTimer); detailSnapshotTimer = null; }
     snapshotLoading = false;
@@ -82,11 +82,13 @@ function renderList(container: HTMLElement): void {
         </div>
     `;
 
-    document.getElementById('cameras-refresh-btn')?.addEventListener('click', () => loadMonitors(true));
+    document.getElementById('cameras-refresh-btn')?.addEventListener('click', () => {
+        if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
+        loadMonitors(true);
+    });
     document.getElementById('cameras-stop-all-btn')?.addEventListener('click', stopAllMonitors);
 
     loadMonitors();
-    refreshTimer = window.setInterval(loadMonitors, 5000);
 }
 
 async function loadMonitors(force: boolean = false): Promise<void> {
@@ -96,9 +98,22 @@ async function loadMonitors(force: boolean = false): Promise<void> {
         const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000, force });
         cachedMonitors = data;
         renderMonitorList(data);
+        
+        // Schedule next poll based on whether there are active monitors
+        scheduleNextListPoll(data.active_count > 0);
     } catch (err) {
         console.error('Failed to load monitors:', err);
     }
+}
+
+function scheduleNextListPoll(hasActive: boolean): void {
+    if (currentView !== 'list') return;
+    if (refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
+    }
+    const interval = hasActive ? 5000 : 30000;
+    refreshTimer = window.setTimeout(() => loadMonitors(), interval);
 }
 
 function renderMonitorList(data: MonitorStatusResponse): void {

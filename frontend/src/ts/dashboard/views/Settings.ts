@@ -14,6 +14,7 @@ const IC = {
   phone:     `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>`,
   mail:      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
   webhook:   `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`,
+  telegram:  `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`,
 };
 
 export async function renderSettings(container: HTMLElement): Promise<void> {
@@ -38,6 +39,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     twilio: { enabled_manual: false, enabled_cctv: false },
     email: { enabled: false, smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', from_address: '', to_addresses: [] },
     webhook: { enabled: false, url: '' },
+    telegram: { enabled: false },
     cooldown_seconds: 300,
   };
 
@@ -241,6 +243,17 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
                 <input type="text" class="stg__input" id="webhook-url" placeholder="https://hooks.example.com/alert" value="${notifs.webhook.url}" />
               </div>
             </div>
+
+            <div class="stg__divider"></div>
+
+            <!-- Telegram -->
+            <div class="stg__channel">
+              <div class="stg__channel-header">
+                <span class="stg__channel-icon">${IC.telegram}</span>
+                <span class="stg__channel-name">Telegram Bot</span>
+                <label class="toggle" style="margin-left:auto;"><input type="checkbox" id="telegram-enabled" ${notifs.telegram.enabled ? 'checked' : ''} /><span class="toggle__slider"></span></label>
+              </div>
+            </div>
           </section>
 
           <!-- Danger Zone -->
@@ -305,6 +318,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
         webhook: {
           enabled: (document.getElementById('webhook-enabled') as HTMLInputElement).checked,
           url: (document.getElementById('webhook-url') as HTMLInputElement).value,
+        },
+        telegram: {
+          enabled: (document.getElementById('telegram-enabled') as HTMLInputElement).checked,
         },
       });
 

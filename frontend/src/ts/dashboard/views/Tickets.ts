@@ -265,7 +265,7 @@ function showTicketDetail(ticket: ViolationTicket): void {
       try {
         await api.patch(`/tickets/${ticket.id}`, { status: next });
         // Optimistic update — no full reload needed
-        allTickets = allTickets.map(t => t.id === ticket.id ? { ...t, status: next } : t);
+        allTickets = allTickets.map(t => t.id === ticket.id ? { ...t, status: next as any } : t);
         renderSummary();
         renderGrid(filterTickets());
         closeModal();
