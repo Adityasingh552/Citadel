@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     evidence_dir: str = "./evidence"
     uploads_dir: str = "./uploads"
     data_dir: str = "./data"  # Local cache for Caltrans CSV files
+    citadel_base_url: str = "http://localhost:8000"  # Base URL for public links (e.g. for Telegram)
 
     # Detection toggles
     detect_accidents: bool = True

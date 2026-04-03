@@ -143,8 +143,8 @@ class MonitorService:
             camera_name=camera.location_name,
             camera_location=(
                 f"IA — {getattr(camera, 'region', getattr(camera, 'county', ''))}, {camera.route}"
-                if getattr(camera, "id", "").startswith("ia_")
-                else f"D{camera.district} — {camera.county}, {camera.route}"
+                if str(getattr(camera, "id", "")).startswith("ia_")
+                else f"D{getattr(camera, 'district', 0)} — {camera.county}, {camera.route}"
             ),
             started_at=datetime.now(timezone.utc).isoformat(),
             poll_interval=poll_seconds,
@@ -510,7 +510,7 @@ class MonitorService:
                     metadata={
                         "camera_id": camera.id,
                         "camera_name": camera.location_name,
-                        "camera_district": camera.district,
+                        "camera_district": getattr(camera, "district", 0),
                         "camera_county": camera.county,
                         "camera_route": camera.route,
                         "camera_lat": camera.latitude,
@@ -665,7 +665,7 @@ class MonitorService:
                     metadata={
                         "camera_id": camera.id,
                         "camera_name": camera.location_name,
-                        "camera_district": camera.district,
+                        "camera_district": getattr(camera, "district", 0),
                         "camera_county": camera.county,
                         "camera_route": camera.route,
                         "camera_lat": camera.latitude,

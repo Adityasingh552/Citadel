@@ -171,14 +171,19 @@ class WebhookChannelConfig(BaseModel):
     url: str = ""
     headers: dict = {}
 
+class TelegramChannelConfig(BaseModel):
+    enabled: bool = False
+
 class NotificationChannelsOut(BaseModel):
     twilio: TwilioChannelConfig
     email: EmailChannelConfig
     webhook: WebhookChannelConfig
+    telegram: TelegramChannelConfig
     cooldown_seconds: int = 300
 
 class NotificationChannelsUpdate(BaseModel):
     twilio: Optional[TwilioChannelConfig] = None
     email: Optional[EmailChannelConfig] = None
     webhook: Optional[WebhookChannelConfig] = None
+    telegram: Optional[TelegramChannelConfig] = None
     cooldown_seconds: Optional[int] = None

@@ -112,6 +112,7 @@ async def get_notification_settings(_admin: str = Depends(get_current_admin)):
             "smtp_user": "", "smtp_password": "", "from_address": "", "to_addresses": []
         }),
         "webhook": config.get("webhook", {"enabled": False, "url": "", "headers": {}}),
+        "telegram": config.get("telegram", {"enabled": False}),
         "cooldown_seconds": config.get("cooldown_seconds", 300)
     }
 
@@ -128,6 +129,8 @@ async def update_notification_settings(update: dict, _admin: str = Depends(get_c
         channels["email"] = update["email"]
     if "webhook" in update:
         channels["webhook"] = update["webhook"]
+    if "telegram" in update:
+        channels["telegram"] = update["telegram"]
     if "cooldown_seconds" in update:
         channels["cooldown_seconds"] = int(update["cooldown_seconds"])
 

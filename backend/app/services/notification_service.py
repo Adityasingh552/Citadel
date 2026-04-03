@@ -86,6 +86,10 @@ def _build_payload(event_details: dict) -> dict:
     source_video = event_details.get("source_video", "")
     event_id = event_details.get("event_id", "")
 
+    from app.config import get_settings
+    settings = get_settings()
+    base_url = settings.citadel_base_url.rstrip("/")
+
     payload = {
         "system": "Citadel Traffic Safety Analytics",
         "event_id": event_id,
@@ -98,14 +102,16 @@ def _build_payload(event_details: dict) -> dict:
     }
 
     if evidence_path:
-        payload["evidence_image"] = f"{_get_evidence_base_url()}/{evidence_path}"
+        payload["evidence_image"] = f"{base_url}{_get_evidence_base_url()}/{evidence_path}"
+        logger.info("Built evidence URL: %s", payload["evidence_image"])
 
     if source == "cctv" and camera_id:
         payload["camera_id"] = camera_id
         payload["camera_name"] = camera_name
-        # Link to the live camera snapshot proxy
-        payload["cctv_live_feed_url"] = f"/api/cameras/{camera_id}/snapshot"
-        payload["cctv_info_url"] = f"/api/cameras/{camera_id}/info"
+        # Absolute links for external use (Telegram, Email)
+        payload["cctv_live_feed_url"] = f"{base_url}/api/cameras/{camera_id}/snapshot"
+        payload["cctv_info_url"] = f"{base_url}/api/cameras/{camera_id}/info"
+        logger.info("Built CCTV Live URL: %s", payload["cctv_live_feed_url"])
     elif source_video:
         payload["source_file"] = source_video
 
@@ -300,6 +306,100 @@ def _send_webhook(config: dict, event_details: dict, payload: dict) -> dict:
         return {"status": "failed", "error": str(exc)}
 
 
+# ── Telegram channel ───────────────────────────────────────────────────────
+
+def _send_telegram(config: dict, event_details: dict, payload: dict) -> dict:
+    """Send alert via Telegram API."""
+    try:
+        from app.config import get_settings
+        settings = get_settings()
+        
+        bot_token = config.get("bot_token") or settings.telegram_bot_token
+        chat_id = config.get("chat_id") or settings.telegram_chat_id
+        
+        if not bot_token or not chat_id:
+            return {"status": "failed", "error": "Telegram token or chat ID not configured"}
+
+        sev = str(payload.get("severity", "unknown")).upper()
+        ev_type = str(payload.get("event_type", "event"))
+        conf = str(payload.get("confidence", "0%"))
+        ts = str(payload.get("timestamp", ""))
+        source = str(payload.get("source", "manual"))
+        ev_id = str(payload.get("event_id", ""))[:12]
+        
+        import html
+        
+        caption = f"🚨 <b>Citadel Alert: {html.escape(sev)} {html.escape(ev_type)}</b>\n\n"
+        caption += f"<b>Event ID:</b> <code>{ev_id}...</code>\n"
+        caption += f"<b>Severity:</b> {html.escape(sev)}\n"
+        caption += f"<b>Confidence:</b> {conf}\n"
+        caption += f"<b>Source:</b> {html.escape(source)}\n"
+        caption += f"<b>Timestamp:</b> {ts}\n"
+
+        # Add Evidence Link
+        evidence_url = payload.get("evidence_image")
+        if evidence_url:
+            caption += f"\n🖼 <b>Evidence Frame:</b>\n{evidence_url}\n"
+
+        if payload.get("camera_id"):
+            cam_name = html.escape(payload.get('camera_name', '—'))
+            caption += f"\n📹 <b>CCTV Source</b>\n"
+            caption += f"<b>Camera ID:</b> <code>{payload['camera_id']}</code>\n"
+            caption += f"<b>Name:</b> {cam_name}\n"
+            cctv_live_url = payload.get('cctv_live_feed_url')
+            if cctv_live_url:
+                caption += f"🔗 <b>Live Feed:</b>\n{cctv_live_url}\n"
+
+        bboxes = payload.get("bounding_boxes", [])
+        if bboxes:
+            caption += f"\n🔍 <b>Detections:</b>\n"
+            for i, box in enumerate(bboxes):
+                label = html.escape(box.get('label', '—'))
+                box_conf = box.get('confidence', 0)
+                box_conf_pct = f"{box_conf:.1%}" if isinstance(box_conf, float) else box_conf
+                caption += f"{i+1}. {label} ({box_conf_pct})\n"
+                
+        send_message_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        send_photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+        
+        evidence_path = event_details.get("evidence_path")
+        
+        with httpx.Client(timeout=30.0) as client:
+            try:
+                if evidence_path:
+                    from pathlib import Path
+                    full_path = Path(settings.evidence_dir) / evidence_path
+                    if full_path.exists():
+                        resp = client.post(
+                            send_photo_url,
+                            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+                            files={"photo": (full_path.name, open(full_path, "rb"), "image/jpeg")}
+                        )
+                    else:
+                        resp = client.post(send_message_url, json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
+                else:
+                    resp = client.post(send_message_url, json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
+                    
+                if resp.status_code >= 400:
+                    logger.error("Telegram API Error: %d - %s", resp.status_code, resp.text)
+                else:
+                    logger.info("Telegram alert sent successfully")
+            except Exception as e:
+                logger.error("Failed to send Telegram alert: %s", str(e))
+                
+        if resp.status_code < 400:
+            logger.info("Telegram alert sent to chat %s", chat_id)
+            return {"status": "sent", "error": None, "status_code": resp.status_code}
+        else:
+            err = f"HTTP {resp.status_code}: {resp.text[:200]}"
+            logger.warning("Telegram alert returned error: %s", err)
+            return {"status": "failed", "error": err, "status_code": resp.status_code}
+
+    except Exception as exc:
+        logger.error("Telegram alert failed: %s", exc)
+        return {"status": "failed", "error": str(exc)}
+
+
 # ── Central Dispatcher ─────────────────────────────────────────────────────
 
 def dispatch_alerts(event_details: dict, db: Session) -> list[dict]:
@@ -389,6 +489,19 @@ def dispatch_alerts(event_details: dict, db: Session) -> list[dict]:
             _mark_sent("webhook")
             results.append({"channel": "webhook", "status": "dispatched"})
 
+    # ── Telegram ─────────────────────────────────────────────────────────────
+    telegram_cfg = config.get("telegram", {})
+    if telegram_cfg.get("enabled", False):
+        # Fire in background thread (no cooldown according to user preference)
+        t = threading.Thread(
+            target=_dispatch_telegram_thread,
+            args=(telegram_cfg, event_details, payload, db),
+            daemon=True,
+            name="notify-telegram",
+        )
+        t.start()
+        results.append({"channel": "telegram", "status": "dispatched"})
+
     return results
 
 
@@ -443,6 +556,25 @@ def _dispatch_webhook_thread(webhook_cfg: dict, event_details: dict, payload: di
             db, event_details, "webhook",
             result["status"],
             recipient=webhook_cfg.get("url", ""),
+            details=result,
+        )
+    finally:
+        db.close()
+
+
+def _dispatch_telegram_thread(telegram_cfg: dict, event_details: dict, payload: dict, db_unused: Session) -> None:
+    """Send telegram in background and log the result."""
+    result = _send_telegram(telegram_cfg, event_details, payload)
+
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        from app.config import get_settings
+        chat_id = telegram_cfg.get("chat_id") or get_settings().telegram_chat_id
+        _log_alert(
+            db, event_details, "telegram",
+            result["status"],
+            recipient=chat_id,
             details=result,
         )
     finally:
