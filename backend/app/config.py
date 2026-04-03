@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     emergency_contact_number: str = ""   # Indian E.164 e.g. +919876543210
     twilio_call_cooldown_seconds: int = 300  # minimum gap between calls (default: 5 min)
 
+    # Camera list cache — how many hours before the on-disk camera list is
+    # considered stale and a fresh network fetch is triggered.
+    # Applies to both Iowa DOT (ArcGIS) and Caltrans (CSV) camera lists.
+    # Default: 24 hours.  Set to 0 to always refetch on startup.
+    camera_list_cache_ttl_hours: float = 24.0
+
     # Telegram
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""

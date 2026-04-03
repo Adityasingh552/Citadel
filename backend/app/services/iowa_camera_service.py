@@ -14,6 +14,8 @@ from typing import Optional
 
 import requests
 
+from app.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 IOWA_ARCGIS_URL = (
@@ -24,9 +26,13 @@ IOWA_ARCGIS_URL = (
 # Fetch all features in pages of 1000 (ArcGIS default transfer limit)
 IOWA_PAGE_SIZE = 1000
 
-# Cache durations
-IOWA_CACHE_TTL = 600           # 10 minutes — in-memory cache
-IOWA_LOCAL_CACHE_TTL = 3600    # 1 hour — file cache survives restarts
+# In-memory cache TTL (seconds) — always 10 minutes regardless of config
+IOWA_CACHE_TTL = 600
+
+
+def _iowa_local_cache_ttl() -> float:
+    """Return the on-disk cache TTL in seconds, read from CAMERA_LIST_CACHE_TTL_HOURS."""
+    return get_settings().camera_list_cache_ttl_hours * 3600
 
 IOWA_FETCH_TIMEOUT = 30        # seconds per HTTP request
 
@@ -49,6 +55,7 @@ class IowaCameraInfo:
     org: str                 # "IADOT"
     recorded: str            # "Y" | "N" | "E"
     function: str            # "General" | "RWIS" | etc.
+    update_frequency: int = 1  # minutes — Iowa cameras refresh ~every minute
 
     def to_dict(self) -> dict:
         return {
@@ -71,7 +78,7 @@ class IowaCameraInfo:
             "recorded": self.recorded,
             "function": self.function,
             "in_service": True,
-            "update_frequency": 1,
+            "update_frequency": self.update_frequency,
             # UI compatibility aliases
             "district": 0,
             "district_name": self.region,
@@ -114,8 +121,11 @@ class IowaCameraService:
         path = self._local_cache_path
         if not path or not os.path.exists(path):
             return False
+        ttl = _iowa_local_cache_ttl()
+        if ttl <= 0:
+            return False  # TTL=0 means always refetch
         age = time.time() - os.path.getmtime(path)
-        return age < IOWA_LOCAL_CACHE_TTL
+        return age < ttl
 
     def _load_local_cache(self) -> list[IowaCameraInfo] | None:
         path = self._local_cache_path

@@ -15,6 +15,8 @@ from typing import Optional
 import requests
 from PIL import Image
 
+from app.config import get_settings
+
 # Max consecutive ffmpeg restart attempts before giving up
 STREAM_MAX_RETRIES = 5
 # Initial back-off in seconds; doubles on each failure (capped at STREAM_MAX_BACKOFF)
@@ -45,9 +47,13 @@ CALTRANS_CSV_URL = (
 
 # Cache duration in seconds
 CAMERA_CACHE_TTL = 600          # 10 minutes — in-memory cache within a running process
-LOCAL_CSV_TTL = 86400           # 24 hours — local file cache survives restarts
 SNAPSHOT_TIMEOUT = 10           # seconds
 STARTUP_CACHE_ENABLED = True    # Pre-load cameras on startup
+
+
+def _local_csv_ttl() -> float:
+    """Return the on-disk CSV cache TTL in seconds, read from CAMERA_LIST_CACHE_TTL_HOURS."""
+    return get_settings().camera_list_cache_ttl_hours * 3600
 
 
 @dataclass
@@ -358,11 +364,14 @@ class CameraService:
         return os.path.join(self._data_dir, f"cctvStatusD{district:02d}.csv")
 
     def _is_local_csv_fresh(self, path: str) -> bool:
-        """Check if a local CSV file exists and is younger than LOCAL_CSV_TTL."""
+        """Check if a local CSV file exists and is younger than the configured cache TTL."""
         try:
+            ttl = _local_csv_ttl()
+            if ttl <= 0:
+                return False  # TTL=0 means always refetch
             mtime = os.path.getmtime(path)
             age = time.time() - mtime
-            return age < LOCAL_CSV_TTL
+            return age < ttl
         except OSError:
             return False
 
