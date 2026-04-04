@@ -2,8 +2,10 @@
 .DS_Store
 Thumbs.db
 ._*
-dataset
-
+datasets
+yolo26n.pt
+yolo26m.pt
+runs
 # ── IDEs & Editors ──────────────────────────────────────────────────
 .idea/
 .vscode/
@@ -68,3 +70,5 @@ start.py
 .ipynb_checkpoints
 new-design
 .agents
+test.ipynb
+train-yolo26-object-detection-on-custom-dataset.ipynb

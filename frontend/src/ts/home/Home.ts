@@ -15,8 +15,8 @@ export function renderHome(container: HTMLElement): void {
 
       <!-- Hero -->
       <section class="hero">
-        <video class="hero__video" autoplay muted loop playsinline>
-          <source src="https://videos.pexels.com/video-files/32909774/14025986_3840_2160_29fps.mp4" type="video/mp4">
+        <video class="hero__video" autoplay muted loop playsinline preload="metadata" poster="/src/assets/home-video-poster.jpg">
+          <source src="" data-src="/src/assets/home-video-compressed.mp4" type="video/mp4">
         </video>
         <div class="hero__overlay"></div>
         <div class="hero__content">
@@ -116,4 +116,24 @@ export function renderHome(container: HTMLElement): void {
       </footer>
     </div>
   `;
+
+  // Lazy load video source after page loads
+  const video = container.querySelector('video');
+  if (video) {
+    const source = video.querySelector('source');
+    if (source && source.dataset.src) {
+      // Load on page load or user interaction
+      const loadVideo = () => {
+        source.src = source.dataset.src;
+        video.load();
+      };
+      
+      // Trigger on load or when user scrolls near hero
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadVideo);
+      } else {
+        loadVideo();
+      }
+    }
+  }
 }
