@@ -1,0 +1,35 @@
+{
+  "name": "Citadel Backend",
+  "description": "AI-Powered Traffic Safety Analytics API",
+  "stack": "heroku-24",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "ADMIN_USERNAME": {
+      "description": "Admin login username",
+      "required": true
+    },
+    "ADMIN_PASSWORD": {
+      "description": "Admin login password",
+      "required": true
+    },
+    "JWT_SECRET": {
+      "description": "Secret key for JWT token signing",
+      "required": true
+    },
+    "FRONTEND_URL": {
+      "description": "Vercel frontend URL for CORS",
+      "required": true
+    },
+    "CITADEL_BASE_URL": {
+      "description": "Public backend URL for alert links",
+      "required": false
+    }
+  },
+  "addons": [
+    "heroku-postgresql:essential-0"
+  ]
+}

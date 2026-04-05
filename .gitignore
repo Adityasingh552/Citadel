@@ -59,6 +59,8 @@ backend/uploads/
 backend/evidence/
 backend/data/
 backend/runtime_settings.json
+uploads/
+evidence/
 
 # ── AI / Model Cache ───────────────────────────────────────────────
 *.pt
