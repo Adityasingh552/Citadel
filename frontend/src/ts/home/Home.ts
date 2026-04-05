@@ -124,7 +124,7 @@ export function renderHome(container: HTMLElement): void {
     if (source && source.dataset.src) {
       // Load on page load or user interaction
       const loadVideo = () => {
-        source.src = source.dataset.src;
+        source.src = source.dataset.src!;
         video.load();
       };
       

@@ -8,6 +8,16 @@ class Settings(BaseSettings):
     """Application settings loaded from .env file."""
 
     database_url: str = "sqlite:///./citadel.db"
+    
+    # Heroku provides DATABASE_URL for Postgres; we need to handle both
+    # For Postgres on Heroku, the URL starts with postgres:// but SQLAlchemy needs postgresql://
+    @property
+    def effective_database_url(self) -> str:
+        """Return database URL with Heroku postgres:// fix."""
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return url
     model_name: str = "gopesh353/traffic-accident-detection-detr"
     confidence_threshold: float = 0.7
     evidence_dir: str = "./evidence"
