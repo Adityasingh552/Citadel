@@ -2,8 +2,13 @@
 
 const TOKEN_KEY = 'citadel_token';
 
+// Use VITE_API_URL env var if set, otherwise fall back to relative /api path
+const API_BASE = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api`
+    : '/api';
+
 class ApiClient {
-    private baseUrl = '/api';
+    private baseUrl = API_BASE;
 
     /** Get the stored JWT token. */
     getToken(): string | null {
