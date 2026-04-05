@@ -89,6 +89,7 @@ app = FastAPI(
 cors_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://citadeldev.vercel.app",
 ]
 # Add production frontend URL from environment if set
 if os.getenv("FRONTEND_URL"):

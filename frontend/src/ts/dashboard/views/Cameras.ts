@@ -826,10 +826,9 @@ function updateDetailFeedToggleUI(): void {
 
 async function stopCamera(cameraId: string): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${cameraId}/stop`, {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/${cameraId}/stop`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to stop monitoring');
         Toast.show('Camera monitoring stopped', 'info');
@@ -841,10 +840,9 @@ async function stopCamera(cameraId: string): Promise<void> {
 
 async function pauseCamera(cameraId: string): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${cameraId}/pause`, {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/${cameraId}/pause`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to pause monitoring');
         Toast.show('Camera monitoring paused', 'info');
@@ -856,10 +854,9 @@ async function pauseCamera(cameraId: string): Promise<void> {
 
 async function resumeCamera(cameraId: string): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${cameraId}/resume`, {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/${cameraId}/resume`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to resume monitoring');
         Toast.show('Camera monitoring resumed', 'success');
@@ -871,10 +868,9 @@ async function resumeCamera(cameraId: string): Promise<void> {
 
 async function stopAllMonitors(): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch('/api/cameras/monitor/stop', {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/stop`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to stop all monitors');
         const data = await res.json();

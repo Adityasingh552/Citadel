@@ -738,10 +738,10 @@ async function startMonitoring(): Promise<void> {
             stream_interval: String(streamInterval),
         });
         const res = await fetch(
-            `/api/cameras/monitor/start?${params.toString()}`,
+            `${api.getBaseUrl()}/cameras/monitor/start?${params.toString()}`,
             {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                headers: api.getAuthHeaders(),
             }
         );
         if (!res.ok) {
@@ -764,10 +764,9 @@ async function stopMonitoring(): Promise<void> {
     if (!selectedCamera) return;
 
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/stop`, {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/${selectedCamera.id}/stop`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to stop monitoring');
 
@@ -797,10 +796,9 @@ async function pauseMonitoring(): Promise<void> {
     if (!selectedCamera) return;
 
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/pause`, {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/${selectedCamera.id}/pause`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to pause monitoring');
 
@@ -820,10 +818,9 @@ async function resumeMonitoring(): Promise<void> {
     if (!selectedCamera) return;
 
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/resume`, {
+        const res = await fetch(`${api.getBaseUrl()}/cameras/monitor/${selectedCamera.id}/resume`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to resume monitoring');
 

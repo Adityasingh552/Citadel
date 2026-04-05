@@ -356,10 +356,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     btn.textContent = 'Deleting...';
 
     try {
-      const token = localStorage.getItem('citadel_token');
-      const res = await fetch('/api/settings/data', {
+      const res = await fetch(`${api.getBaseUrl()}/settings/data`, {
         method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        headers: api.getAuthHeaders(),
       });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();

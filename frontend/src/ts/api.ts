@@ -24,7 +24,10 @@ class ApiClient {
     async login(username: string, password: string): Promise<void> {
         const res = await fetch(this.baseUrl + '/auth/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            },
             body: JSON.stringify({ username, password }),
         });
         if (!res.ok) {
@@ -43,7 +46,10 @@ class ApiClient {
 
     /** Build headers with Authorization if token exists. */
     private authHeaders(extra?: Record<string, string>): Record<string, string> {
-        const headers: Record<string, string> = { ...extra };
+        const headers: Record<string, string> = {
+            'ngrok-skip-browser-warning': 'true',
+            ...extra
+        };
         const token = this.getToken();
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
@@ -246,6 +252,11 @@ class ApiClient {
     /** Build auth headers object for use in <img> fetch or manual requests. */
     getAuthHeaders(): Record<string, string> {
         return this.authHeaders();
+    }
+
+    /** Get the API base URL for manual fetch calls. */
+    getBaseUrl(): string {
+        return this.baseUrl;
     }
 }
 
