@@ -1026,9 +1026,8 @@ function updateMonitorUI(status: MonitorStatus): void {
                 .reverse()
                 .map(d => `
                     <div class="monitor-detection-item">
-                        <div class="monitor-detection-item__icon
-                            monitor-detection-item__icon--${d.label === 'accident' ? 'danger' : 'info'}">
-                            ${d.label === 'accident' ? '!' : 'V'}
+                        <div class="monitor-detection-item__icon monitor-detection-item__icon--danger">
+                            !
                         </div>
                         <div class="monitor-detection-item__content">
                             <div class="monitor-detection-item__label">

@@ -6,6 +6,7 @@ datasets
 yolo26n.pt
 yolo26m.pt
 runs
+Accident/
 # ── IDEs & Editors ──────────────────────────────────────────────────
 .idea/
 .vscode/
@@ -67,6 +68,7 @@ evidence/
 *.pth
 *.bin
 *.safetensors
+*.onnx
 .cache/
 start.py
 .ipynb_checkpoints

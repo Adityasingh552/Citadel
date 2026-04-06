@@ -37,7 +37,6 @@ export function formatPercent(n: number): string {
 export function eventTypeLabel(type: string): string {
     const labels: Record<string, string> = {
         accident: 'Accident',
-        vehicle: 'Vehicle',
     };
     return labels[type] || type;
 }

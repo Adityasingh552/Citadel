@@ -475,8 +475,6 @@ class MonitorService:
         allowed_labels: set[str] = set()
         if rt["detect_accidents"]:
             allowed_labels.add("accident")
-        if rt["detect_vehicles"]:
-            allowed_labels.add("vehicle")
 
         # Run detection
         detections, evidence_path = self._processor.process_image(
@@ -632,8 +630,6 @@ class MonitorService:
         allowed_labels: set[str] = set()
         if rt["detect_accidents"]:
             allowed_labels.add("accident")
-        if rt["detect_vehicles"]:
-            allowed_labels.add("vehicle")
 
         # Run detection
         detections, evidence_path = self._processor.process_image(

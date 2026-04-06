@@ -693,8 +693,8 @@ function renderDetailDetections(m: MonitorStatus): void {
 
     el.innerHTML = dets.slice().reverse().map(d => `
         <div class="camdetail__det-item">
-            <div class="camdetail__det-icon camdetail__det-icon--${d.label === 'accident' ? 'danger' : 'info'}">
-                ${d.label === 'accident' ? '!' : 'V'}
+            <div class="camdetail__det-icon camdetail__det-icon--danger">
+                !
             </div>
             <div class="camdetail__det-content">
                 <div class="camdetail__det-label">

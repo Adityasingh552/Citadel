@@ -43,8 +43,8 @@ async def lifespan(app: FastAPI):
     os.makedirs(config.uploads_dir, exist_ok=True)
     os.makedirs(config.data_dir, exist_ok=True)
 
-    # Load DETR model
-    logger.info("Loading AI detection model...")
+    # Load YOLO26 model
+    logger.info("Loading YOLO26 accident detection model...")
     detector = AccidentDetector()
     detector.load()
 
@@ -125,5 +125,5 @@ async def health_check():
     return {
         "status": "healthy",
         "version": "1.0.0-alpha",
-        "model": config.model_name,
+        "model": "YOLO26 (ONNX)",
     }

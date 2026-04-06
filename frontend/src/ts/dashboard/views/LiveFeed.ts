@@ -48,7 +48,7 @@ export function renderLiveFeed(container: HTMLElement): void {
       <div class="detection-panel">
         <div class="detection-panel__header">
           <span class="card__title">Detected Objects</span>
-          <span class="badge badge--vehicle" id="detection-count">0</span>
+          <span class="badge badge--accident" id="detection-count">0</span>
         </div>
         <div id="detection-list">
           <div class="empty-state" style="padding: var(--space-8);">

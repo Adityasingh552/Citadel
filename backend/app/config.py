@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
         return url
-    model_name: str = "gopesh353/traffic-accident-detection-detr"
+    model_path: str = ""  # Path to YOLO26 ONNX model file
     confidence_threshold: float = 0.7
     evidence_dir: str = "./evidence"
     uploads_dir: str = "./uploads"
@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # Detection toggles
     detect_accidents: bool = True
-    detect_vehicles: bool = True
 
     # Processing
     # Auth — all required, no defaults

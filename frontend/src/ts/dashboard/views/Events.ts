@@ -12,7 +12,6 @@ export async function renderEvents(container: HTMLElement): Promise<void> {
       <select id="filter-type">
         <option value="">All Types</option>
         <option value="accident">Accident</option>
-        <option value="vehicle">Vehicle</option>
       </select>
       <select id="filter-severity">
         <option value="">All Severities</option>

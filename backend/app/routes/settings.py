@@ -57,9 +57,6 @@ def get_runtime_settings() -> dict:
         "detect_accidents": overrides.get(
             "detect_accidents", settings.detect_accidents
         ),
-        "detect_vehicles": overrides.get(
-            "detect_vehicles", settings.detect_vehicles
-        ),
     }
 
 
@@ -69,15 +66,12 @@ async def get_current_settings(_admin: str = Depends(get_current_admin)):
     settings = get_settings()
     overrides = _load_overrides()
     return SettingsOut(
-        model_name=settings.model_name,
+        model_path=settings.model_path,
         confidence_threshold=overrides.get(
             "confidence_threshold", settings.confidence_threshold
         ),
         detect_accidents=overrides.get(
             "detect_accidents", settings.detect_accidents
-        ),
-        detect_vehicles=overrides.get(
-            "detect_vehicles", settings.detect_vehicles
         ),
     )
 
@@ -93,8 +87,6 @@ async def update_settings(update: SettingsUpdate, _admin: str = Depends(get_curr
         overrides["confidence_threshold"] = update.confidence_threshold
     if update.detect_accidents is not None:
         overrides["detect_accidents"] = update.detect_accidents
-    if update.detect_vehicles is not None:
-        overrides["detect_vehicles"] = update.detect_vehicles
     _save_overrides(overrides)
 
     return await get_current_settings()

@@ -1,6 +1,6 @@
 /** Citadel frontend type definitions. */
 
-export type EventType = 'accident' | 'vehicle';
+export type EventType = 'accident';
 export type Severity = 'high' | 'medium' | 'low';
 export type TicketStatus = 'issued' | 'pending' | 'resolved';
 export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'cameras' | 'settings';
@@ -90,10 +90,9 @@ export interface VideoProcessingResult {
 }
 
 export interface AppSettings {
-    model_name: string;
+    model_path: string;
     confidence_threshold: number;
     detect_accidents: boolean;
-    detect_vehicles: boolean;
 }
 
 export interface ChartDataPoint {

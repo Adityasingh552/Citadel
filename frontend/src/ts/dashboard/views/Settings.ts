@@ -29,10 +29,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   }
 
   const conf = settings || {
-    model_name: 'hilmantm/detr-traffic-accident-detection',
+    model_path: '',
     confidence_threshold: 0.7,
     detect_accidents: true,
-    detect_vehicles: true,
   };
 
   const notifs = notifications || {
@@ -102,17 +101,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
                 <span class="toggle__slider"></span>
               </label>
             </div>
-
-            <div class="stg__toggle-row">
-              <div>
-                <div class="stg__label">Vehicle Detection</div>
-                <div class="stg__hint">Identify &amp; count vehicles in the scene</div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="toggle-vehicles" ${conf.detect_vehicles ? 'checked' : ''} />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
           </section>
 
           <!-- System Information -->
@@ -132,7 +120,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
               </div>
               <div class="stg__info-item">
                 <span class="stg__info-label">AI Model</span>
-                <span class="stg__info-value stg__info-value--mono">${conf.model_name.split('/').pop()}</span>
+                <span class="stg__info-value stg__info-value--mono">YOLO26 (ONNX)</span>
               </div>
               <div class="stg__info-item">
                 <span class="stg__info-label">Database</span>
@@ -297,7 +285,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       await api.put('/settings', {
         confidence_threshold: parseInt(slider.value) / 100,
         detect_accidents: (document.getElementById('toggle-accidents') as HTMLInputElement).checked,
-        detect_vehicles: (document.getElementById('toggle-vehicles') as HTMLInputElement).checked,
       });
 
       await api.put('/settings/notifications', {
@@ -339,7 +326,6 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       await api.put('/settings', {
         confidence_threshold: 0.7,
         detect_accidents: true,
-        detect_vehicles: true,
       });
       renderSettings(container);
     } catch {

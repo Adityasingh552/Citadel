@@ -23,8 +23,8 @@ export function renderHome(container: HTMLElement): void {
           <div class="hero__badge">AI-Powered Safety System</div>
           <h1 class="hero__title">AI-Powered Traffic<br>Safety Analytics</h1>
           <p class="hero__subtitle">
-            Detect accidents, violations, and safety threats in real-time
-            using advanced computer vision and the DETR transformer model.
+            Detect accidents and safety threats in real-time
+            using the YOLO26 AI model with ONNX runtime.
           </p>
           <a href="#/dashboard" class="hero__cta">Launch Dashboard →</a>
         </div>
@@ -41,14 +41,7 @@ export function renderHome(container: HTMLElement): void {
             <div class="feature-card__icon"></div>
             <h3 class="feature-card__title">Accident Detection</h3>
             <p class="feature-card__desc">
-              DETR transformer model identifies collisions and classifies severity in real-time.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-card__icon"></div>
-            <h3 class="feature-card__title">Vehicle Detection</h3>
-            <p class="feature-card__desc">
-              Precise vehicle localization with bounding boxes and confidence scoring.
+              YOLO26 model identifies collisions and classifies severity in real-time.
             </p>
           </div>
           <div class="feature-card">
@@ -65,22 +58,29 @@ export function renderHome(container: HTMLElement): void {
               Automated violation ticket generation with evidence snapshots and status tracking.
             </p>
           </div>
+          <div class="feature-card">
+            <div class="feature-card__icon"></div>
+            <h3 class="feature-card__title">Live Monitoring</h3>
+            <p class="feature-card__desc">
+              Connect to traffic cameras for continuous real-time accident detection.
+            </p>
+          </div>
         </div>
       </section>
 
       <!-- Stats -->
       <section class="stats-section">
         <div class="stat-item">
-          <div class="stat-item__value">98.5%</div>
-          <div class="stat-item__label">Detection Accuracy</div>
+          <div class="stat-item__value">YOLO26</div>
+          <div class="stat-item__label">Detection Model</div>
         </div>
         <div class="stat-item">
           <div class="stat-item__value">24/7</div>
           <div class="stat-item__label">Monitoring Ready</div>
         </div>
         <div class="stat-item">
-          <div class="stat-item__value">DETR</div>
-          <div class="stat-item__label">Transformer Model</div>
+          <div class="stat-item__value">ONNX</div>
+          <div class="stat-item__label">CPU Runtime</div>
         </div>
         <div class="stat-item">
           <div class="stat-item__value">&lt;1s</div>
@@ -100,7 +100,7 @@ export function renderHome(container: HTMLElement): void {
           <div class="step">
             <div class="step__number">2</div>
             <div class="step__label">AI Processes</div>
-            <p class="step__desc">DETR model analyzes frames for accidents and vehicles</p>
+            <p class="step__desc">YOLO26 model analyzes frames for accident detection</p>
           </div>
           <div class="step">
             <div class="step__number">3</div>

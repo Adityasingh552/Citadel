@@ -1,4 +1,4 @@
-"""Video frame processor — extracts frames and runs detection pipeline."""
+"""Video frame processor — extracts frames and runs YOLO26 accident detection pipeline."""
 
 import logging
 import os
@@ -43,7 +43,7 @@ class VideoProcessingOutput:
 
 
 class VideoProcessor:
-    """Processes video files frame-by-frame through the DETR detector.
+    """Processes video files frame-by-frame through the YOLO26 accident detector.
 
     Extracts frames at a configurable interval, runs detection,
     saves evidence frames for detections, and deduplicates results.
@@ -135,9 +135,8 @@ class VideoProcessor:
                             # Per-frame dedup: keep only the highest-confidence accident
                             # to avoid multiple tickets for the same collision event
                             accident_detections = [d for d in detections if d.label == "accident"]
-                            vehicle_detections = [d for d in detections if d.label != "accident"]
                             best_accident = max(accident_detections, key=lambda d: d.confidence)
-                            detections = [best_accident] + vehicle_detections
+                            detections = [best_accident]
 
                         # Save evidence frame with annotated bounding boxes
                         evidence_path = self._save_evidence(frame, frame_idx, detections)
@@ -187,10 +186,9 @@ class VideoProcessor:
         if detections:
             # Per-image accident dedup: keep only highest-confidence accident
             accident_dets = [d for d in detections if d.label == "accident"]
-            vehicle_dets = [d for d in detections if d.label != "accident"]
             if accident_dets:
                 best_accident = max(accident_dets, key=lambda d: d.confidence)
-                detections = [best_accident] + vehicle_dets
+                detections = [best_accident]
 
             # Convert PIL image to BGR numpy array for OpenCV annotation
             bgr_frame = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -222,8 +220,8 @@ class VideoProcessor:
                 h = int(det.bbox["height"])
                 x2, y2 = x + w, y + h
 
-                # Color: red for accident (BGR), yellow for vehicle
-                color = (59, 59, 239) if det.label == "accident" else (0, 195, 255)
+                # Color: red for accident (BGR)
+                color = (59, 59, 239)  # Red in BGR
                 thickness = 2
 
                 # Draw bounding box

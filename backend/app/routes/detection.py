@@ -106,8 +106,6 @@ async def detect_video(
     allowed_labels: set[str] = set()
     if rt["detect_accidents"]:
         allowed_labels.add("accident")
-    if rt["detect_vehicles"]:
-        allowed_labels.add("vehicle")
 
     # Process video in a thread pool (prevents blocking the event loop)
     job_id = job_id or uuid.uuid4().hex[:16]
@@ -234,8 +232,6 @@ async def detect_image(
     allowed_labels: set[str] = set()
     if rt["detect_accidents"]:
         allowed_labels.add("accident")
-    if rt["detect_vehicles"]:
-        allowed_labels.add("vehicle")
 
     # Detect (returns tuple of detections + annotated evidence path)
     detections, evidence_path = processor.process_image(
@@ -309,8 +305,6 @@ async def detect_images_batch(
     allowed_labels: set[str] = set()
     if rt["detect_accidents"]:
         allowed_labels.add("accident")
-    if rt["detect_vehicles"]:
-        allowed_labels.add("vehicle")
 
     image_results = []
     total_events = 0

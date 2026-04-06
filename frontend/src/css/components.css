@@ -210,11 +210,6 @@
     color: var(--danger-text);
 }
 
-.badge--vehicle {
-    background: var(--info-muted);
-    color: var(--info-text);
-}
-
 .badge--high {
     background: var(--danger-muted);
     color: var(--danger-text);
