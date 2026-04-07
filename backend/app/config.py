@@ -18,7 +18,8 @@ class Settings(BaseSettings):
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
         return url
-    model_path: str = ""  # Path to YOLO26 ONNX model file
+    model_path: str = "./models/model.onnx"  # Path to YOLO26 ONNX model file
+    model_url: str = "https://huggingface.co/gopesh353/citadel/resolve/main/exp-2.onnx"  # Auto-download URL
     confidence_threshold_manual: float = 0.7
     confidence_threshold_cctv: float = 0.7
     evidence_dir: str = "./evidence"

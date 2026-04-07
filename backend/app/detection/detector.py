@@ -3,10 +3,15 @@
 Uses a local ONNX model for accident detection.
 Detects two classes: 'Accident' (class 0) and 'Non Accident' (class 1).
 Only 'Accident' detections are reported.
+
+Auto-downloads from HuggingFace if model file doesn't exist.
 """
 
 import logging
+import os
 from dataclasses import dataclass
+from pathlib import Path
+from urllib.request import urlretrieve
 
 import numpy as np
 import onnxruntime as ort
@@ -17,6 +22,26 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 INPUT_SIZE = 640  # YOLO26 input dimensions
+
+
+def download_model(url: str, dest: str) -> None:
+    """Download model from URL if it doesn't exist locally."""
+    dest_path = Path(dest)
+    
+    if dest_path.exists():
+        logger.info("Model already exists at %s", dest)
+        return
+    
+    # Create parent directories
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("Downloading model from %s ...", url)
+    try:
+        urlretrieve(url, dest)
+        logger.info("Model downloaded to %s (%.1f MB)", dest, dest_path.stat().st_size / 1024 / 1024)
+    except Exception as e:
+        logger.error("Failed to download model: %s", e)
+        raise RuntimeError(f"Failed to download model from {url}: {e}") from e
 
 
 @dataclass
@@ -38,18 +63,23 @@ class AccidentDetector:
     def __init__(self, model_path: str | None = None, confidence_threshold: float | None = None):
         settings = get_settings()
         self.model_path = model_path or settings.model_path
+        self.model_url = settings.model_url
         self.confidence_threshold = confidence_threshold or settings.confidence_threshold_manual
-
-        if not self.model_path:
-            raise ValueError("MODEL_PATH must be set in environment variables")
 
         self._session: ort.InferenceSession | None = None
         self._loaded = False
 
     def load(self) -> None:
-        """Load the ONNX model. Call once before detect()."""
+        """Load the ONNX model. Downloads from HuggingFace if not present."""
         if self._loaded:
             return
+
+        # Auto-download if model doesn't exist and URL is configured
+        if not Path(self.model_path).exists():
+            if self.model_url:
+                download_model(self.model_url, self.model_path)
+            else:
+                raise ValueError(f"Model not found at {self.model_path} and MODEL_URL not set")
 
         logger.info("Loading YOLO26 model: %s (runtime: CPU)", self.model_path)
 
