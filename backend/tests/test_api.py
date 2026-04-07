@@ -150,12 +150,13 @@ class TestSettings:
         resp = client.get("/api/settings", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
-        assert "confidence_threshold" in data
+        assert "confidence_threshold_manual" in data
+        assert "confidence_threshold_cctv" in data
         assert "model_name" in data
 
     def test_update_settings(self):
         headers = get_auth_header()
-        resp = client.put("/api/settings", json={"confidence_threshold": 0.8}, headers=headers)
+        resp = client.put("/api/settings", json={"confidence_threshold_manual": 0.8}, headers=headers)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["confidence_threshold"] == 0.8
+        assert data["confidence_threshold_manual"] == 0.8

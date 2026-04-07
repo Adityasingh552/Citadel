@@ -50,9 +50,17 @@ def get_runtime_settings() -> dict:
     """
     settings = get_settings()
     overrides = _load_overrides()
+
+    # Backward compatibility: if old single threshold exists but new ones don't,
+    # use it as the default for both
+    legacy_default = overrides.get("confidence_threshold", settings.confidence_threshold_manual)
+
     return {
-        "confidence_threshold": overrides.get(
-            "confidence_threshold", settings.confidence_threshold
+        "confidence_threshold_manual": overrides.get(
+            "confidence_threshold_manual", legacy_default
+        ),
+        "confidence_threshold_cctv": overrides.get(
+            "confidence_threshold_cctv", legacy_default
         ),
         "detect_accidents": overrides.get(
             "detect_accidents", settings.detect_accidents
@@ -65,10 +73,14 @@ async def get_current_settings(_admin: str = Depends(get_current_admin)):
     """Get current detection configuration."""
     settings = get_settings()
     overrides = _load_overrides()
+    legacy_default = overrides.get("confidence_threshold", settings.confidence_threshold_manual)
     return SettingsOut(
         model_path=settings.model_path,
-        confidence_threshold=overrides.get(
-            "confidence_threshold", settings.confidence_threshold
+        confidence_threshold_manual=overrides.get(
+            "confidence_threshold_manual", legacy_default
+        ),
+        confidence_threshold_cctv=overrides.get(
+            "confidence_threshold_cctv", legacy_default
         ),
         detect_accidents=overrides.get(
             "detect_accidents", settings.detect_accidents
@@ -83,8 +95,10 @@ async def update_settings(update: SettingsUpdate, _admin: str = Depends(get_curr
     Changes are persisted to runtime_settings.json.
     """
     overrides = _load_overrides()
-    if update.confidence_threshold is not None:
-        overrides["confidence_threshold"] = update.confidence_threshold
+    if update.confidence_threshold_manual is not None:
+        overrides["confidence_threshold_manual"] = update.confidence_threshold_manual
+    if update.confidence_threshold_cctv is not None:
+        overrides["confidence_threshold_cctv"] = update.confidence_threshold_cctv
     if update.detect_accidents is not None:
         overrides["detect_accidents"] = update.detect_accidents
     _save_overrides(overrides)

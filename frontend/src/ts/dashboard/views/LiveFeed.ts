@@ -1,7 +1,6 @@
-/** Dashboard — Manual Feed view with interactive video player and detection.
+/** Dashboard — Manual Feed view with centered drag & drop and auto-analyze.
  *
- * Uses global processing state so the user can navigate away
- * and come back to see the ongoing/completed processing status.
+ * Files are analyzed automatically on drop. Results shown below with thumbnails.
  */
 
 import { api } from '../../api.js';
@@ -10,339 +9,14 @@ import { getActiveJob, setActiveJob, onJobChange } from '../../state.js';
 
 let _unsubscribe: (() => void) | null = null;
 
-export function renderLiveFeed(container: HTMLElement): void {
-  // Clean up previous listener
-  if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
-
-  container.innerHTML = `
-    <div class="feed-layout">
-      <!-- Video Area -->
-      <div>
-        <div class="feed-video" id="video-container">
-          <div class="empty-state" style="height: 100%; color: white;">
-            <div class="empty-state__icon"></div>
-            <div class="empty-state__title" style="color: white;">No Active Feed</div>
-            <div class="empty-state__desc" style="color: rgba(255,255,255,0.6);">
-              Upload a video or images to analyze
-            </div>
-          </div>
-        </div>
-        <div class="feed-controls">
-          <input type="file" id="video-upload" accept="video/*" style="display:none" />
-          <input type="file" id="image-upload" accept="image/*" multiple style="display:none" />
-          <button class="btn btn--primary" id="upload-btn">Upload Video</button>
-          <button class="btn btn--outline" id="upload-images-btn">Upload Images</button>
-          <button class="btn btn--primary" id="process-btn" style="display:none;">Analyze</button>
-          <span id="upload-status" style="font-size: var(--text-sm); color: var(--text-muted); flex:1; text-align:center;"></span>
-        </div>
-        <!-- Progress Bar -->
-        <div class="progress-bar-wrapper" id="progress-wrapper" style="display:none;">
-          <div class="progress-bar">
-            <div class="progress-bar__fill" id="progress-fill" style="width: 0%;"></div>
-          </div>
-          <span class="progress-bar__text" id="progress-text">0%</span>
-        </div>
-      </div>
-
-      <!-- Detection Panel -->
-      <div class="detection-panel">
-        <div class="detection-panel__header">
-          <span class="card__title">Detected Objects</span>
-          <span class="badge badge--accident" id="detection-count">0</span>
-        </div>
-        <div id="detection-list">
-          <div class="empty-state" style="padding: var(--space-8);">
-            <div class="empty-state__icon"></div>
-            <div class="empty-state__title">No detections</div>
-            <div class="empty-state__desc">Upload and analyze a video first</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Processing Progress -->
-    <div id="processing-result" style="margin-top: var(--space-6);"></div>
-  `;
-
-  const fileInput = document.getElementById('video-upload') as HTMLInputElement;
-  const imageInput = document.getElementById('image-upload') as HTMLInputElement;
-  const uploadBtn = document.getElementById('upload-btn')!;
-  const uploadImagesBtn = document.getElementById('upload-images-btn')!;
-  const processBtn = document.getElementById('process-btn')!;
-  const statusEl = document.getElementById('upload-status')!;
-  const progressWrapper = document.getElementById('progress-wrapper')!;
-  const progressFill = document.getElementById('progress-fill')!;
-  const progressText = document.getElementById('progress-text')!;
-  let selectedFile: File | null = null;
-  let _progressPollTimer: ReturnType<typeof setInterval> | null = null;
-
-  // Restore state if there's an active or completed job
-  const existingJob = getActiveJob();
-  if (existingJob) {
-    restoreJobUI(existingJob, statusEl, processBtn);
-  }
-
-  // Listen for job updates (fires if processing finishes while we're on this page)
-  _unsubscribe = onJobChange((job) => {
-    if (job) restoreJobUI(job, statusEl, processBtn);
-  });
-
-  uploadBtn.addEventListener('click', () => fileInput.click());
-  uploadImagesBtn.addEventListener('click', () => imageInput.click());
-
-  // Video: User selects a file → show video player immediately
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    selectedFile = file;
-    showVideoPlayer(file);
-    processBtn.style.display = '';
-    statusEl.textContent = `Loaded: ${file.name} — click Analyze to process`;
-  });
-
-  // Images: User selects multiple images → process one-by-one with progress
-  imageInput.addEventListener('change', async () => {
-    const files = imageInput.files;
-    if (!files || !files.length) return;
-    const fileList = Array.from(files);
-
-    // Show image thumbnails in the video area
-    const videoContainer = document.getElementById('video-container')!;
-    videoContainer.innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 12px; height: 100%; overflow-y: auto; align-content: start;">
-        ${fileList.map(f => `
-          <div style="border-radius: var(--radius-md); overflow: hidden; border: 1px solid rgba(255,255,255,0.1); aspect-ratio: 1;">
-            <img src="${URL.createObjectURL(f)}" alt="${f.name}"
-              style="width: 100%; height: 100%; object-fit: cover;" />
-          </div>
-        `).join('')}
-      </div>
-      <div class="feed-video__live-badge">
-        <span class="feed-video__live-dot" style="background: var(--warning);"></span>
-        ${fileList.length} IMAGES
-      </div>
-    `;
-
-    statusEl.textContent = `Processing ${fileList.length} images...`;
-    uploadImagesBtn.setAttribute('disabled', 'true');
-    uploadImagesBtn.textContent = 'Processing...';
-    showProgress(0);
-
-    try {
-      interface BatchResult {
-        images_processed: number;
-        images_skipped: number;
-        total_events: number;
-        total_tickets: number;
-        results: Array<{
-          filename: string;
-          status: string;
-          reason?: string;
-          detections: Array<{ label: string; confidence: number; severity: string }>;
-        }>;
-      }
-
-      const result = await api.uploadMultiple<BatchResult>('/detect/images', fileList);
-
-      showProgress(100);
-      statusEl.textContent = `Done — ${result.images_processed} images processed — ${result.total_events} events, ${result.total_tickets} tickets`;
-
-      // Update badge
-      const badge = document.querySelector('.feed-video__live-badge');
-      if (badge) {
-        badge.innerHTML = `<span class="feed-video__live-dot"></span> PROCESSED`;
-      }
-
-      // Show batch results in detection panel
-      renderBatchDetections(result);
-
-      // Hide progress bar after delay
-      setTimeout(() => hideProgress(), 2000);
-    } catch (err) {
-      statusEl.textContent = `Error: ${err instanceof Error ? err.message : 'Batch processing failed'}`;
-      hideProgress();
-    } finally {
-      uploadImagesBtn.removeAttribute('disabled');
-      uploadImagesBtn.textContent = 'Upload Images';
-    }
-  });
-
-  // Video: User clicks Analyze → send to backend with progress polling
-  processBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
-    const file = selectedFile;
-
-    // Generate a job_id so we can poll progress immediately
-    const jobId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-
-    setActiveJob({ fileName: file.name, startedAt: Date.now(), status: 'processing' });
-    statusEl.textContent = `Analyzing ${file.name}...`;
-    processBtn.setAttribute('disabled', 'true');
-    processBtn.textContent = 'Analyzing...';
-    showProgress(0);
-
-    // Start polling for progress right away
-    _progressPollTimer = setInterval(async () => {
-      try {
-        const prog = await api.get<{ percent: number; status: string; current: number; total: number }>(
-          `/detect/progress/${jobId}`
-        );
-        if (prog.status === 'processing' || prog.status === 'done') {
-          showProgress(prog.percent);
-          statusEl.textContent = `Analyzing ${file.name}... ${prog.percent}% (${prog.current}/${prog.total} frames)`;
-        }
-      } catch { /* ignore poll errors */ }
-    }, 800);
-
-    try {
-      // Upload with job_id param so backend uses same ID for progress tracking
-      const result = await api.upload<VideoProcessingResult>('/detect/video', file, { job_id: jobId });
-
-      // Stop polling
-      if (_progressPollTimer) { clearInterval(_progressPollTimer); _progressPollTimer = null; }
-
-      showProgress(100);
-      setTimeout(() => hideProgress(), 2000);
-
-      setActiveJob({ fileName: file.name, startedAt: Date.now(), status: 'done', result });
-    } catch (err) {
-      if (_progressPollTimer) { clearInterval(_progressPollTimer); _progressPollTimer = null; }
-      hideProgress();
-      const msg = err instanceof Error ? err.message : 'Processing failed';
-      setActiveJob({ fileName: file.name, startedAt: Date.now(), status: 'error', error: msg });
-    }
-  });
-
-  // --- Progress bar helpers ---
-  function showProgress(percent: number) {
-    progressWrapper.style.display = '';
-    progressFill.style.width = `${percent}%`;
-    progressText.textContent = `${Math.round(percent)}%`;
-  }
-
-  function hideProgress() {
-    progressWrapper.style.display = 'none';
-    progressFill.style.width = '0%';
-    progressText.textContent = '0%';
-  }
+interface FileItem {
+  file: File;
+  id: string;
+  type: 'video' | 'image';
+  previewUrl: string;
 }
 
-function showVideoPlayer(file: File): void {
-  const videoContainer = document.getElementById('video-container');
-  if (!videoContainer) return;
-  const videoUrl = URL.createObjectURL(file);
-  videoContainer.innerHTML = `
-    <div class="feed-video__live-badge">
-      <span class="feed-video__live-dot" style="background: var(--warning);"></span> READY
-    </div>
-    <video
-      src="${videoUrl}"
-      controls
-      style="width:100%; height:100%; object-fit:contain; background:#000; border-radius: var(--radius-md);"
-      id="video-player"
-    ></video>
-  `;
-}
-
-function restoreJobUI(
-  job: ReturnType<typeof getActiveJob>,
-  statusEl: HTMLElement,
-  processBtn: HTMLElement,
-): void {
-  if (!job) return;
-
-  if (job.status === 'processing') {
-    const elapsed = Math.round((Date.now() - job.startedAt) / 1000);
-    statusEl.textContent = `Analyzing ${job.fileName}... (${elapsed}s elapsed — you can navigate freely)`;
-    processBtn.style.display = '';
-    processBtn.setAttribute('disabled', 'true');
-    processBtn.textContent = 'Analyzing...';
-
-    // Update badge
-    const badge = document.querySelector('.feed-video__live-badge');
-    if (badge) {
-      badge.innerHTML = `<span class="feed-video__live-dot" style="background: var(--warning);"></span> PROCESSING`;
-    }
-  } else if (job.status === 'done' && job.result) {
-    statusEl.textContent = `Done — ${job.result.events_created} events, ${job.result.tickets_created} tickets`;
-    processBtn.style.display = '';
-    processBtn.removeAttribute('disabled');
-    processBtn.textContent = 'Analyze';
-    renderDetections(job.result);
-
-    const badge = document.querySelector('.feed-video__live-badge');
-    if (badge) {
-      badge.innerHTML = `<span class="feed-video__live-dot"></span> PROCESSED`;
-    }
-  } else if (job.status === 'error') {
-    statusEl.textContent = `Error: ${job.error}`;
-    processBtn.style.display = '';
-    processBtn.removeAttribute('disabled');
-    processBtn.textContent = 'Analyze';
-  }
-}
-
-function renderDetections(result: VideoProcessingResult): void {
-  const listEl = document.getElementById('detection-list');
-  const countEl = document.getElementById('detection-count');
-  const resultEl = document.getElementById('processing-result');
-
-  if (countEl) countEl.textContent = String(result.detections.length);
-
-  if (listEl) {
-    if (!result.detections.length) {
-      listEl.innerHTML = `
-        <div class="empty-state" style="padding: var(--space-8);">
-          <div class="empty-state__icon"></div>
-          <div class="empty-state__title">No incidents detected</div>
-          <div class="empty-state__desc">Video processed — no accidents found</div>
-        </div>
-      `;
-    } else {
-      listEl.innerHTML = result.detections.map(d => `
-        <div class="detection-item">
-          <span class="detection-item__label">
-            ${d.label}
-          </span>
-          <span class="detection-item__confidence">${(d.confidence * 100).toFixed(1)}%</span>
-          <div class="detection-item__bar">
-            <div class="detection-item__bar-fill" style="width: ${d.confidence * 100}%"></div>
-          </div>
-        </div>
-      `).join('');
-    }
-  }
-
-  if (resultEl) {
-    resultEl.innerHTML = `
-      <div class="card">
-        <div class="card__header">
-          <span class="card__title">Processing Summary</span>
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); text-align: center;">
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800;">${result.total_frames}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Total Frames</div>
-          </div>
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800;">${result.frames_processed}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Processed</div>
-          </div>
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800; color: var(--danger);">${result.events_created}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Events</div>
-          </div>
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800; color: var(--warning);">${result.tickets_created}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Tickets</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-}
-
-function renderBatchDetections(result: {
+interface BatchResult {
   images_processed: number;
   images_skipped: number;
   total_events: number;
@@ -353,72 +27,379 @@ function renderBatchDetections(result: {
     reason?: string;
     detections: Array<{ label: string; confidence: number; severity: string }>;
   }>;
-}): void {
-  const listEl = document.getElementById('detection-list');
-  const countEl = document.getElementById('detection-count');
-  const resultEl = document.getElementById('processing-result');
+}
 
-  const totalDetections = result.results.reduce((sum, r) => sum + r.detections.length, 0);
-  if (countEl) countEl.textContent = String(totalDetections);
+interface UnifiedResult {
+  fileName: string;
+  fileType: 'video' | 'image';
+  status: 'processed' | 'skipped' | 'error';
+  reason?: string;
+  detections: Array<{ label: string; confidence: number; severity: string }>;
+  events: number;
+  tickets: number;
+  previewUrl?: string;
+}
 
-  if (listEl) {
-    if (!totalDetections) {
-      listEl.innerHTML = `
-        <div class="empty-state" style="padding: var(--space-8);">
-          <div class="empty-state__icon"></div>
-          <div class="empty-state__title">No incidents detected</div>
-          <div class="empty-state__desc">${result.images_processed} images processed — no accidents found</div>
+export function renderLiveFeed(container: HTMLElement): void {
+  if (_unsubscribe) { _unsubscribe(); _unsubscribe = null; }
+
+  container.innerHTML = `
+    <div class="feed-layout--single">
+      <div id="drop-zone-area"></div>
+      <div class="progress-bar-wrapper" id="progress-wrapper" style="display:none;">
+        <div class="progress-bar">
+          <div class="progress-bar__fill" id="progress-fill" style="width: 0%;"></div>
         </div>
-      `;
-    } else {
-      listEl.innerHTML = result.results
-        .filter(r => r.detections.length > 0)
-        .map(r => `
-          <div style="padding: var(--space-3); border-bottom: 1px solid var(--card-border);">
-            <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-2);">
-              ${r.filename}
-            </div>
-            ${r.detections.map(d => `
-              <div class="detection-item">
-                <span class="detection-item__label">
-                  ${d.label}
-                </span>
-                <span class="detection-item__confidence">${(d.confidence * 100).toFixed(1)}%</span>
-                <div class="detection-item__bar">
-                  <div class="detection-item__bar-fill" style="width: ${d.confidence * 100}%"></div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        `).join('');
+        <span class="progress-bar__text" id="progress-text">0%</span>
+      </div>
+      <div id="status-text" style="font-size: var(--text-sm); color: var(--text-muted); text-align: center; margin-top: var(--space-3);"></div>
+      <div id="results-area"></div>
+    </div>
+  `;
+
+  const dropZoneArea = document.getElementById('drop-zone-area')!;
+  const progressWrapper = document.getElementById('progress-wrapper')!;
+  const progressFill = document.getElementById('progress-fill')!;
+  const progressText = document.getElementById('progress-text')!;
+  const statusText = document.getElementById('status-text')!;
+  const resultsArea = document.getElementById('results-area')!;
+
+  const existingJob = getActiveJob();
+  if (existingJob && existingJob.status === 'done' && existingJob.result) {
+    renderResultsFromVideoResult(existingJob.result);
+  }
+
+  _unsubscribe = onJobChange((job) => {
+    if (job?.status === 'done' && job.result) {
+      renderResultsFromVideoResult(job.result);
+    }
+  });
+
+  renderDropZone(dropZoneArea);
+  setupDropZone(dropZoneArea, progressWrapper, progressFill, progressText, statusText, resultsArea);
+}
+
+function renderDropZone(area: HTMLElement): void {
+  area.innerHTML = `
+    <div class="drop-zone" id="drop-zone">
+      <svg class="drop-zone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <div class="drop-zone__text">Drop video or image files here</div>
+      <div class="drop-zone__hint">or click to browse — supports MP4, AVI, MOV, JPG, PNG, WebP</div>
+    </div>
+  `;
+}
+
+function setupDropZone(
+  area: HTMLElement,
+  progressWrapper: HTMLElement,
+  progressFill: HTMLElement,
+  progressText: HTMLElement,
+  statusText: HTMLElement,
+  resultsArea: HTMLElement,
+): void {
+  const dropZone = document.getElementById('drop-zone')!;
+  const hiddenInput = document.createElement('input');
+  hiddenInput.type = 'file';
+  hiddenInput.multiple = true;
+  hiddenInput.accept = 'video/*,image/*';
+  hiddenInput.style.display = 'none';
+  document.body.appendChild(hiddenInput);
+
+  dropZone.addEventListener('click', () => hiddenInput.click());
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (!e.dataTransfer) return;
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    handleFiles(droppedFiles, progressWrapper, progressFill, progressText, statusText, resultsArea, dropZone);
+  });
+
+  hiddenInput.addEventListener('change', () => {
+    const pickedFiles = Array.from(hiddenInput.files || []);
+    handleFiles(pickedFiles, progressWrapper, progressFill, progressText, statusText, resultsArea, dropZone);
+    hiddenInput.value = '';
+  });
+}
+
+function handleFiles(
+  newFiles: File[],
+  progressWrapper: HTMLElement,
+  progressFill: HTMLElement,
+  progressText: HTMLElement,
+  statusText: HTMLElement,
+  resultsArea: HTMLElement,
+  dropZone: HTMLElement,
+): void {
+  const fileItems: FileItem[] = [];
+  for (const file of newFiles) {
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+    if (isVideo || isImage) {
+      fileItems.push({
+        file,
+        id: crypto.randomUUID(),
+        type: isVideo ? 'video' : 'image',
+        previewUrl: URL.createObjectURL(file),
+      });
     }
   }
 
-  if (resultEl) {
-    resultEl.innerHTML = `
-      <div class="card">
-        <div class="card__header">
-          <span class="card__title">Batch Processing Summary</span>
+  if (!fileItems.length) return;
+
+  dropZone.innerHTML = `
+    <div class="file-preview-grid">
+      ${fileItems.map(f => {
+        if (f.type === 'image') {
+          return `
+            <div class="file-preview-item">
+              <img class="file-preview-item__thumb" src="${f.previewUrl}" alt="${f.file.name}" />
+              <div class="file-preview-item__name" title="${f.file.name}">${f.file.name}</div>
+            </div>
+          `;
+        }
+        return `
+          <div class="file-preview-item file-preview-item--video">
+            <svg class="file-preview-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="23 7 16 12 23 17 23 7"/>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+            <div class="file-preview-item__name" title="${f.file.name}">${f.file.name}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  dropZone.style.cursor = 'default';
+  dropZone.onclick = null;
+
+  processAllFiles(fileItems, progressWrapper, progressFill, progressText, statusText, resultsArea);
+}
+
+async function processAllFiles(
+  files: FileItem[],
+  progressWrapper: HTMLElement,
+  progressFill: HTMLElement,
+  progressText: HTMLElement,
+  statusText: HTMLElement,
+  resultsArea: HTMLElement,
+): Promise<void> {
+  const imageFiles = files.filter(f => f.type === 'image');
+  const videoFiles = files.filter(f => f.type === 'video');
+  const totalTasks = (imageFiles.length > 0 ? 1 : 0) + videoFiles.length;
+  let completedTasks = 0;
+
+  const unifiedResults: UnifiedResult[] = [];
+
+  showProgress(progressWrapper, progressFill, progressText, 0);
+
+  try {
+    if (imageFiles.length > 0) {
+      statusText.textContent = `Processing ${imageFiles.length} image(s)...`;
+      try {
+        const result = await api.uploadMultiple<BatchResult>('/detect/images', imageFiles.map(f => f.file));
+        completedTasks++;
+        showProgress(progressWrapper, progressFill, progressText, (completedTasks / totalTasks) * 100);
+
+        for (const r of result.results) {
+          const imgFile = imageFiles.find(f => f.file.name === r.filename);
+          unifiedResults.push({
+            fileName: r.filename,
+            fileType: 'image',
+            status: r.status as UnifiedResult['status'],
+            reason: r.reason,
+            detections: r.detections,
+            events: r.status === 'processed' ? r.detections.length : 0,
+            tickets: r.status === 'processed' ? r.detections.filter(d => d.label === 'accident').length : 0,
+            previewUrl: imgFile?.previewUrl,
+          });
+        }
+      } catch (err) {
+        unifiedResults.push({
+          fileName: `${imageFiles.length} images`,
+          fileType: 'image',
+          status: 'error',
+          reason: err instanceof Error ? err.message : 'Batch processing failed',
+          detections: [],
+          events: 0,
+          tickets: 0,
+        });
+        completedTasks++;
+      }
+    }
+
+    for (const vf of videoFiles) {
+      statusText.textContent = `Processing video: ${vf.file.name}...`;
+      const jobId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+
+      const pollTimer = setInterval(async () => {
+        try {
+          const prog = await api.get<{ percent: number; status: string }>(`/detect/progress/${jobId}`);
+          if (prog.status === 'processing' || prog.status === 'done') {
+            const basePercent = (completedTasks / totalTasks) * 100;
+            const videoPercent = (prog.percent / 100) * (100 / totalTasks);
+            showProgress(progressWrapper, progressFill, progressText, basePercent + videoPercent);
+          }
+        } catch { /* ignore */ }
+      }, 800);
+
+      try {
+        const result = await api.upload<VideoProcessingResult>('/detect/video', vf.file, { job_id: jobId });
+        clearInterval(pollTimer);
+        completedTasks++;
+        showProgress(progressWrapper, progressFill, progressText, (completedTasks / totalTasks) * 100);
+
+        unifiedResults.push({
+          fileName: vf.file.name,
+          fileType: 'video',
+          status: 'processed',
+          detections: result.detections.map(d => ({ label: d.label, confidence: d.confidence, severity: 'medium' })),
+          events: result.events_created,
+          tickets: result.tickets_created,
+          previewUrl: vf.previewUrl,
+        });
+
+        setActiveJob({ fileName: vf.file.name, startedAt: Date.now(), status: 'done', result });
+      } catch (err) {
+        clearInterval(pollTimer);
+        completedTasks++;
+        unifiedResults.push({
+          fileName: vf.file.name,
+          fileType: 'video',
+          status: 'error',
+          reason: err instanceof Error ? err.message : 'Processing failed',
+          detections: [],
+          events: 0,
+          tickets: 0,
+        });
+      }
+    }
+
+    showProgress(progressWrapper, progressFill, progressText, 100);
+    statusText.textContent = `Done — ${unifiedResults.filter(r => r.status === 'processed').length} file(s) processed`;
+    renderResultsWithThumbnails(unifiedResults, resultsArea);
+
+    setTimeout(() => hideProgress(progressWrapper, progressFill, progressText), 2000);
+  } finally {
+    statusText.textContent = `Done — ${unifiedResults.filter(r => r.status === 'processed').length} file(s) processed`;
+  }
+}
+
+function renderResultsWithThumbnails(results: UnifiedResult[], area: HTMLElement): void {
+  const totalEvents = results.reduce((sum, r) => sum + r.events, 0);
+  const totalTickets = results.reduce((sum, r) => sum + r.tickets, 0);
+  const totalDetections = results.reduce((sum, r) => sum + r.detections.length, 0);
+  const processedCount = results.filter(r => r.status === 'processed').length;
+
+  area.innerHTML = `
+    <div class="results-summary">
+      <div class="results-summary__stats">
+        <div class="summary-stat">
+          <div class="summary-stat__value">${processedCount}</div>
+          <div class="summary-stat__label">Files Processed</div>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); text-align: center;">
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800;">${result.images_processed}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Processed</div>
-          </div>
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800; color: var(--text-muted);">${result.images_skipped}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Skipped</div>
-          </div>
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800; color: var(--danger);">${result.total_events}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Events</div>
-          </div>
-          <div>
-            <div style="font-size: var(--text-2xl); font-weight: 800; color: var(--warning);">${result.total_tickets}</div>
-            <div style="font-size: var(--text-xs); color: var(--text-muted);">Tickets</div>
-          </div>
+        <div class="summary-stat">
+          <div class="summary-stat__value" style="color: var(--accent-text);">${totalDetections}</div>
+          <div class="summary-stat__label">Detections</div>
+        </div>
+        <div class="summary-stat">
+          <div class="summary-stat__value" style="color: var(--danger-text);">${totalEvents}</div>
+          <div class="summary-stat__label">Events</div>
+        </div>
+        <div class="summary-stat">
+          <div class="summary-stat__value" style="color: var(--warning);">${totalTickets}</div>
+          <div class="summary-stat__label">Tickets</div>
         </div>
       </div>
-    `;
-  }
+    </div>
+
+    ${results.length > 0 ? `
+      <div class="results-cards">
+        ${results.map(r => `
+          <div class="result-card">
+            ${r.previewUrl && r.fileType === 'image' ? `
+              <div class="result-card__thumb">
+                <img src="${r.previewUrl}" alt="${r.fileName}" />
+              </div>
+            ` : r.previewUrl && r.fileType === 'video' ? `
+              <div class="result-card__thumb result-card__thumb--video">
+                <video src="${r.previewUrl}" muted style="width:100%;height:100%;object-fit:cover;"></video>
+                <div class="result-card__thumb-overlay">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="none">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                </div>
+              </div>
+            ` : `
+              <div class="result-card__thumb result-card__thumb--placeholder">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <line x1="9" y1="3" x2="9" y2="21"/>
+                </svg>
+              </div>
+            `}
+            <div class="result-card__info">
+              <div class="result-card__name" title="${r.fileName}">${r.fileName}</div>
+              <div class="result-card__status result-card__status--${r.status}">${r.status}</div>
+              ${r.detections.length > 0 ? `
+                <div class="result-card__detections">
+                  ${r.detections.map(d => `
+                    <span class="result-card__tag">
+                      <span class="result-card__tag-label">${d.label}</span>
+                      <span class="result-card__tag-confidence">${(d.confidence * 100).toFixed(0)}%</span>
+                    </span>
+                  `).join('')}
+                </div>
+              ` : r.status === 'processed' ? `
+                <div class="result-card__no-detections">No incidents detected</div>
+              ` : ''}
+              ${r.reason ? `<div class="result-card__reason">${r.reason}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
+function renderResultsFromVideoResult(result: VideoProcessingResult): void {
+  const resultsArea = document.getElementById('results-area');
+  if (!resultsArea) return;
+
+  const unified: UnifiedResult[] = [{
+    fileName: result.video_name,
+    fileType: 'video',
+    status: 'processed',
+    detections: result.detections.map(d => ({ label: d.label, confidence: d.confidence, severity: 'medium' })),
+    events: result.events_created,
+    tickets: result.tickets_created,
+  }];
+
+  renderResultsWithThumbnails(unified, resultsArea);
+}
+
+function showProgress(wrapper: HTMLElement, fill: HTMLElement, text: HTMLElement, percent: number): void {
+  wrapper.style.display = '';
+  fill.style.width = `${percent}%`;
+  text.textContent = `${Math.round(percent)}%`;
+}
+
+function hideProgress(wrapper: HTMLElement, fill: HTMLElement, text: HTMLElement): void {
+  wrapper.style.display = 'none';
+  fill.style.width = '0%';
+  text.textContent = '0%';
 }

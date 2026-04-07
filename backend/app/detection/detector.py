@@ -38,7 +38,7 @@ class AccidentDetector:
     def __init__(self, model_path: str | None = None, confidence_threshold: float | None = None):
         settings = get_settings()
         self.model_path = model_path or settings.model_path
-        self.confidence_threshold = confidence_threshold or settings.confidence_threshold
+        self.confidence_threshold = confidence_threshold or settings.confidence_threshold_manual
 
         if not self.model_path:
             raise ValueError("MODEL_PATH must be set in environment variables")
@@ -178,12 +178,12 @@ class AccidentDetector:
 
             detection = Detection(
                 label="accident",
-                confidence=round(conf, 4),
+                confidence=round(float(conf), 4),
                 bbox={
-                    "x": round(x_min, 1),
-                    "y": round(y_min, 1),
-                    "width": round(box_w, 1),
-                    "height": round(box_h, 1),
+                    "x": round(float(x_min), 1),
+                    "y": round(float(y_min), 1),
+                    "width": round(float(box_w), 1),
+                    "height": round(float(box_h), 1),
                 },
                 severity=self._classify_severity(conf),
             )

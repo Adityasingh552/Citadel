@@ -833,7 +833,7 @@ async function stopCamera(cameraId: string): Promise<void> {
         });
         if (!res.ok) throw new Error('Failed to stop monitoring');
         Toast.show('Camera monitoring stopped', 'info');
-        if (currentView === 'list') loadMonitors();
+        if (currentView === 'list') loadMonitors(true);
     } catch (err: any) {
         Toast.show(err.message || 'Failed to stop', 'error');
     }
@@ -848,7 +848,7 @@ async function pauseCamera(cameraId: string): Promise<void> {
         });
         if (!res.ok) throw new Error('Failed to pause monitoring');
         Toast.show('Camera monitoring paused', 'info');
-        if (currentView === 'list') loadMonitors();
+        if (currentView === 'list') loadMonitors(true);
     } catch (err: any) {
         Toast.show(err.message || 'Failed to pause', 'error');
     }
@@ -863,7 +863,7 @@ async function resumeCamera(cameraId: string): Promise<void> {
         });
         if (!res.ok) throw new Error('Failed to resume monitoring');
         Toast.show('Camera monitoring resumed', 'success');
-        if (currentView === 'list') loadMonitors();
+        if (currentView === 'list') loadMonitors(true);
     } catch (err: any) {
         Toast.show(err.message || 'Failed to resume', 'error');
     }
@@ -879,7 +879,7 @@ async function stopAllMonitors(): Promise<void> {
         if (!res.ok) throw new Error('Failed to stop all monitors');
         const data = await res.json();
         Toast.show(`Stopped ${data.stopped} monitor(s)`, 'info');
-        loadMonitors();
+        loadMonitors(true);
     } catch (err: any) {
         Toast.show(err.message || 'Failed to stop all', 'error');
     }

@@ -195,7 +195,7 @@ async def get_camera_info(
 async def start_monitoring(
     camera_id: str = Query(..., description="Camera ID to monitor"),
     stream_mode: bool = Query(False, description="Use HLS video stream instead of snapshot polling"),
-    stream_interval: int = Query(10, ge=3, le=120, description="Seconds between stream frame grabs (only in stream mode)"),
+    stream_interval: int = Query(10, ge=1, le=120, description="Seconds between stream frame grabs (only in stream mode)"),
     _admin: str = Depends(get_current_admin),
 ):
     """Start auto-monitoring a camera feed.

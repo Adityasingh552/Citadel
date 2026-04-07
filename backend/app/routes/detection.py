@@ -113,7 +113,7 @@ async def detect_video(
         result = await asyncio.to_thread(
             processor.process_video,
             upload_path,
-            confidence_threshold=rt["confidence_threshold"],
+            confidence_threshold=rt["confidence_threshold_manual"],
             allowed_labels=allowed_labels if allowed_labels else None,
             on_progress=lambda cur, tot: _update_progress(job_id, cur, tot),
         )
@@ -236,7 +236,7 @@ async def detect_image(
     # Detect (returns tuple of detections + annotated evidence path)
     detections, evidence_path = processor.process_image(
         image,
-        confidence_threshold=rt["confidence_threshold"],
+        confidence_threshold=rt["confidence_threshold_manual"],
         allowed_labels=allowed_labels if allowed_labels else None,
     )
 
@@ -336,7 +336,7 @@ async def detect_images_batch(
         detections, evidence_path = await asyncio.to_thread(
             processor.process_image,
             image,
-            confidence_threshold=rt["confidence_threshold"],
+            confidence_threshold=rt["confidence_threshold_manual"],
             allowed_labels=allowed_labels if allowed_labels else None,
         )
 

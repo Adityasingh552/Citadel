@@ -753,7 +753,7 @@ async function startMonitoring(): Promise<void> {
         Toast.show(`Monitoring started: ${selectedCamera.location_name}`, 'success');
 
         // Refresh all statuses and update UI
-        await pollAllMonitorStatuses();
+        await pollAllMonitorStatuses(true);
         startStatusPolling();
     } catch (err: any) {
         Toast.show(err.message || 'Failed to start monitoring', 'error');
@@ -773,7 +773,7 @@ async function stopMonitoring(): Promise<void> {
 
         Toast.show('Monitoring stopped', 'info');
 
-        await pollAllMonitorStatuses();
+        await pollAllMonitorStatuses(true);
 
         // Update UI for this camera
         const camStatus = monitorStatuses.find(s => s.camera_id === selectedCamera?.id);
@@ -806,7 +806,7 @@ async function pauseMonitoring(): Promise<void> {
 
         Toast.show('Monitoring paused', 'info');
 
-        await pollAllMonitorStatuses();
+        await pollAllMonitorStatuses(true);
 
         const camStatus = monitorStatuses.find(s => s.camera_id === selectedCamera?.id);
         updateControlButtons(camStatus);
@@ -829,7 +829,7 @@ async function resumeMonitoring(): Promise<void> {
 
         Toast.show('Monitoring resumed', 'success');
 
-        await pollAllMonitorStatuses();
+        await pollAllMonitorStatuses(true);
 
         const camStatus = monitorStatuses.find(s => s.camera_id === selectedCamera?.id);
         updateControlButtons(camStatus);

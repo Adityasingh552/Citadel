@@ -30,7 +30,8 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
 
   const conf = settings || {
     model_path: '',
-    confidence_threshold: 0.7,
+    confidence_threshold_manual: 0.7,
+    confidence_threshold_cctv: 0.7,
     detect_accidents: true,
   };
 
@@ -42,7 +43,8 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     cooldown_seconds: 300,
   };
 
-  const confPct = Math.round(conf.confidence_threshold * 100);
+  const confPctManual = Math.round(conf.confidence_threshold_manual * 100);
+  const confPctCctv = Math.round(conf.confidence_threshold_cctv * 100);
 
   container.innerHTML = `
     <div class="stg">
@@ -79,11 +81,23 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
 
             <div class="stg__field">
               <div class="stg__field-top">
-                <label class="stg__label">Confidence Threshold</label>
-                <span class="stg__badge" id="conf-value">${confPct}%</span>
+                <label class="stg__label">Confidence Threshold — Manual Uploads</label>
+                <span class="stg__badge" id="conf-value-manual">${confPctManual}%</span>
               </div>
-              <input type="range" class="stg__range" id="conf-slider"
-                min="0" max="100" value="${confPct}" />
+              <input type="range" class="stg__range" id="conf-slider-manual"
+                min="0" max="100" value="${confPctManual}" />
+              <div class="stg__range-labels">
+                <span>Low (0%)</span><span>High (100%)</span>
+              </div>
+            </div>
+
+            <div class="stg__field">
+              <div class="stg__field-top">
+                <label class="stg__label">Confidence Threshold — CCTV Live Monitor</label>
+                <span class="stg__badge" id="conf-value-cctv">${confPctCctv}%</span>
+              </div>
+              <input type="range" class="stg__range" id="conf-slider-cctv"
+                min="0" max="100" value="${confPctCctv}" />
               <div class="stg__range-labels">
                 <span>Low (0%)</span><span>High (100%)</span>
               </div>
@@ -271,9 +285,13 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   /* ── Interactivity ── */
 
   // Confidence slider live update
-  const slider = document.getElementById('conf-slider') as HTMLInputElement;
-  const badge  = document.getElementById('conf-value')!;
-  slider.addEventListener('input', () => { badge.textContent = slider.value + '%'; });
+  const sliderManual = document.getElementById('conf-slider-manual') as HTMLInputElement;
+  const badgeManual  = document.getElementById('conf-value-manual')!;
+  sliderManual.addEventListener('input', () => { badgeManual.textContent = sliderManual.value + '%'; });
+
+  const sliderCctv = document.getElementById('conf-slider-cctv') as HTMLInputElement;
+  const badgeCctv  = document.getElementById('conf-value-cctv')!;
+  sliderCctv.addEventListener('input', () => { badgeCctv.textContent = sliderCctv.value + '%'; });
 
   // Save
   document.getElementById('save-settings')?.addEventListener('click', async () => {
@@ -283,7 +301,8 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
 
     try {
       await api.put('/settings', {
-        confidence_threshold: parseInt(slider.value) / 100,
+        confidence_threshold_manual: parseInt(sliderManual.value) / 100,
+        confidence_threshold_cctv: parseInt(sliderCctv.value) / 100,
         detect_accidents: (document.getElementById('toggle-accidents') as HTMLInputElement).checked,
       });
 
@@ -324,7 +343,8 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   document.getElementById('reset-settings')?.addEventListener('click', async () => {
     try {
       await api.put('/settings', {
-        confidence_threshold: 0.7,
+        confidence_threshold_manual: 0.7,
+        confidence_threshold_cctv: 0.7,
         detect_accidents: true,
       });
       renderSettings(container);

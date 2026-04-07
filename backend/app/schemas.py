@@ -112,12 +112,14 @@ class VideoProcessingResult(BaseModel):
 
 class SettingsOut(BaseModel):
     model_path: str
-    confidence_threshold: float
+    confidence_threshold_manual: float
+    confidence_threshold_cctv: float
     detect_accidents: bool
 
 
 class SettingsUpdate(BaseModel):
-    confidence_threshold: Optional[float] = None
+    confidence_threshold_manual: Optional[float] = None
+    confidence_threshold_cctv: Optional[float] = None
     detect_accidents: Optional[bool] = None
 
 

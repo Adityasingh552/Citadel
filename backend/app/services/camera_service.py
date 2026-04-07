@@ -154,11 +154,6 @@ class StreamCapture:
             logger.warning("StreamCapture: ffmpeg is not installed")
             return False
 
-        # Pre-validate: check that the stream URL is reachable before spawning ffmpeg.
-        # This prevents an infinite crash loop when the stream is offline or returns 404.
-        if not self._validate_stream_url():
-            return False
-
         try:
             # ffmpeg outputs a continuous stream of JPEG frames.
             # -re is NOT used so ffmpeg reads as fast as the stream provides.
@@ -200,47 +195,6 @@ class StreamCapture:
 
         logger.info("StreamCapture: started persistent ffmpeg for %s", self._stream_url)
         return True
-
-    def _validate_stream_url(self) -> bool:
-        """Quick HTTP HEAD check to verify the stream URL is reachable.
-
-        Returns True if the URL responds with 2xx or 3xx (redirect).
-        Returns False and sets self._error on 404 / network failure.
-        """
-        try:
-            resp = requests.get(
-                self._stream_url,
-                stream=True,
-                timeout=10,
-                headers={"Range": "bytes=0-0"},  # minimal data transfer
-            )
-            resp.close()
-            if resp.status_code in (200, 206):  # OK or Partial Content
-                return True
-            # Some HLS servers return 403 for HEAD/Range but work fine for ffmpeg.
-            # Only hard-fail on 404 (definitively missing stream).
-            if resp.status_code == 404:
-                self._error = f"Stream URL returned 404 Not Found: {self._stream_url}"
-                logger.warning(
-                    "StreamCapture: stream URL is offline (404), skipping ffmpeg launch: %s",
-                    self._stream_url,
-                )
-                return False
-            # For other codes (401, 403, 5xx) try anyway — ffmpeg may handle them.
-            logger.debug(
-                "StreamCapture: stream URL probe returned %d, attempting ffmpeg anyway: %s",
-                resp.status_code,
-                self._stream_url,
-            )
-            return True
-        except requests.RequestException as exc:
-            self._error = f"Stream URL unreachable: {exc}"
-            logger.warning(
-                "StreamCapture: cannot reach stream URL (%s): %s",
-                self._stream_url,
-                exc,
-            )
-            return False
 
     def stop(self) -> None:
         """Stop the ffmpeg process and reader thread."""

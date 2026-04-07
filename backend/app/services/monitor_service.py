@@ -113,7 +113,7 @@ class MonitorService:
         Args:
             camera: The camera to monitor.
             stream_mode: If True, grab frames from the HLS video stream instead of polling snapshots.
-            stream_interval: Seconds between HLS frame grabs (only used when stream_mode=True). Min 3, max 120.
+            stream_interval: Seconds between HLS frame grabs (only used when stream_mode=True). Min 1, max 120.
         """
         with self._lock:
             existing = self._monitors.get(camera.id)
@@ -122,7 +122,7 @@ class MonitorService:
 
         # Validate stream mode settings
         if stream_mode:
-            stream_interval = max(3, min(120, stream_interval))
+            stream_interval = max(1, min(120, stream_interval))
             if not camera.stream_url:
                 logger.warning(
                     "Stream mode requested for camera %s but no stream_url available, falling back to snapshot mode",
@@ -438,7 +438,7 @@ class MonitorService:
                 status.error = str(e)
 
             # Wait for the poll interval (or until stopped)
-            stop_event.wait(timeout=poll_seconds)
+            stop_event.wait(timeout=status.poll_interval)
 
         logger.info("Monitor loop exited for camera: %s", camera.location_name)
 
@@ -479,7 +479,7 @@ class MonitorService:
         # Run detection
         detections, evidence_path = self._processor.process_image(
             pil_image,
-            confidence_threshold=rt["confidence_threshold"],
+            confidence_threshold=rt["confidence_threshold_cctv"],
             allowed_labels=allowed_labels if allowed_labels else None,
         )
 
@@ -580,10 +580,18 @@ class MonitorService:
                         f"Stream capture gave up after {STREAM_MAX_RETRIES} retries: {capture.error}"
                     )
                     logger.error(
-                        "Stream capture for %s exceeded max retries (%d), stopping stream mode.",
+                        "Stream capture for %s exceeded max retries (%d), falling back to snapshot mode.",
                         camera.location_name,
                         STREAM_MAX_RETRIES,
                     )
+                    
+                    # Fall back to snapshot mode
+                    status.stream_mode = False
+                    status.poll_interval = max(camera.update_frequency * 60, 30)
+                    with self._lock:
+                        monitor = self._monitors.get(camera.id)
+                        if monitor:
+                            monitor.stream_capture = None
                     return
 
                 backoff = capture._backoff
@@ -634,7 +642,7 @@ class MonitorService:
         # Run detection
         detections, evidence_path = self._processor.process_image(
             pil_image,
-            confidence_threshold=rt["confidence_threshold"],
+            confidence_threshold=rt["confidence_threshold_cctv"],
             allowed_labels=allowed_labels if allowed_labels else None,
         )
 

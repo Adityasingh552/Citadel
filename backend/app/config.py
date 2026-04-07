@@ -19,7 +19,8 @@ class Settings(BaseSettings):
             url = url.replace("postgres://", "postgresql://", 1)
         return url
     model_path: str = ""  # Path to YOLO26 ONNX model file
-    confidence_threshold: float = 0.7
+    confidence_threshold_manual: float = 0.7
+    confidence_threshold_cctv: float = 0.7
     evidence_dir: str = "./evidence"
     uploads_dir: str = "./uploads"
     data_dir: str = "./data"  # Local cache for Caltrans CSV files

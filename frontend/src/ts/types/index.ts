@@ -91,7 +91,8 @@ export interface VideoProcessingResult {
 
 export interface AppSettings {
     model_path: string;
-    confidence_threshold: number;
+    confidence_threshold_manual: number;
+    confidence_threshold_cctv: number;
     detect_accidents: boolean;
 }
 
