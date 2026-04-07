@@ -228,3 +228,11 @@ export interface NotificationChannels {
     webhook: WebhookConfig;
     cooldown_seconds: number;
 }
+
+export interface ServiceStatus {
+    model: boolean;
+    detection: boolean;
+    twilio: boolean;
+    telegram: boolean;
+    email: boolean;
+}

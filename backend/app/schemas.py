@@ -90,6 +90,14 @@ class StatsOut(BaseModel):
     timeline_24h: list[TimelinePoint]
 
 
+class ServiceStatusOut(BaseModel):
+    model: bool
+    detection: bool
+    twilio: bool
+    telegram: bool
+    email: bool
+
+
 # --- Detection ---
 
 class DetectionResult(BaseModel):
