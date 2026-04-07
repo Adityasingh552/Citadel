@@ -16,7 +16,7 @@ from app.services.camera_service import camera_service
 from app.services.iowa_camera_service import iowa_camera_service
 from app.services.monitor_service import monitor_service
 from app.routes import auth, detection, events, tickets, stats, settings, cameras, alerts
-from app.routes import iowa_cameras
+from app.routes import iowa_cameras, incidents
 
 # Configure logging
 logging.basicConfig(
@@ -117,6 +117,7 @@ app.include_router(settings.router)
 app.include_router(cameras.router)
 app.include_router(iowa_cameras.router)
 app.include_router(alerts.router)
+app.include_router(incidents.router)
 
 
 @app.get("/api/health", tags=["system"])

@@ -113,7 +113,6 @@ def get_stats(db: Session) -> dict:
     """Get aggregate statistics for the dashboard."""
     total_events = db.query(func.count(Event.id)).scalar() or 0
     total_accidents = db.query(func.count(Event.id)).filter(Event.event_type == "accident").scalar() or 0
-    total_vehicles = db.query(func.count(Event.id)).filter(Event.event_type == "vehicle").scalar() or 0
 
     # Severity breakdown (accidents only)
     severity_high = db.query(func.count(Event.id)).filter(
@@ -144,7 +143,6 @@ def get_stats(db: Session) -> dict:
     return {
         "total_events": total_events,
         "total_accidents": total_accidents,
-        "total_vehicles": total_vehicles,
         "severity_breakdown": SeverityBreakdown(
             high=severity_high, medium=severity_medium, low=severity_low
         ),

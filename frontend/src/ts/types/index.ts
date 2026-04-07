@@ -3,7 +3,7 @@
 export type EventType = 'accident';
 export type Severity = 'high' | 'medium' | 'low';
 export type TicketStatus = 'issued' | 'pending' | 'resolved';
-export type DashboardView = 'overview' | 'events' | 'tickets' | 'live' | 'monitor' | 'cameras' | 'settings';
+export type DashboardView = 'overview' | 'incidents' | 'live' | 'monitor' | 'cameras' | 'settings';
 
 export interface BoundingBox {
     x: number;
@@ -68,10 +68,45 @@ export interface SeverityBreakdown {
 export interface SystemStats {
     total_events: number;
     total_accidents: number;
-    total_vehicles: number;
     total_tickets: number;
     severity_breakdown: SeverityBreakdown;
     timeline_24h: TimelinePoint[];
+}
+
+export interface ConfidenceBin {
+    label: string;
+    count: number;
+}
+
+export interface Incident {
+    id: string;
+    ticket_id: string | null;
+    timestamp: string;
+    event_type: string;
+    confidence: number;
+    severity: Severity;
+    evidence_path: string | null;
+    source_video: string | null;
+    metadata: Record<string, unknown> | null;
+    status: TicketStatus | 'no_ticket';
+    issued_at: string | null;
+    created_at: string;
+}
+
+export interface IncidentListResponse {
+    incidents: Incident[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface IncidentStats {
+    total_incidents: number;
+    resolved_count: number;
+    pending_count: number;
+    issued_count: number;
+    avg_confidence: number;
+    confidence_distribution: ConfidenceBin[];
 }
 
 export interface DetectionResult {

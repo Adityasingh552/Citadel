@@ -299,14 +299,14 @@
 
 
 /* ═══════════════════════════════════════════
-   TICKETS — Summary bar
+   INCIDENTS — Summary bar
    ═══════════════════════════════════════════ */
 
-.tickets-summary {
+.incidents-summary {
     margin-bottom: var(--space-5);
 }
 
-.tickets-summary__bar {
+.incidents-summary__bar {
     display: flex;
     align-items: center;
     gap: var(--space-6);
@@ -317,20 +317,20 @@
     width: fit-content;
 }
 
-.tickets-summary__divider {
+.incidents-summary__divider {
     width: 1px;
     height: 28px;
     background: var(--border-subtle);
 }
 
-.tickets-summary__stat {
+.incidents-summary__stat {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
 }
 
-.tickets-summary__num {
+.incidents-summary__num {
     font-size: var(--text-xl);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -338,11 +338,11 @@
     line-height: 1;
 }
 
-.tickets-summary__num--issued  { color: var(--info); }
-.tickets-summary__num--pending { color: var(--warning); }
-.tickets-summary__num--resolved { color: var(--success); }
+.incidents-summary__num--issued  { color: var(--info); }
+.incidents-summary__num--pending { color: var(--warning); }
+.incidents-summary__num--resolved { color: var(--success); }
 
-.tickets-summary__label {
+.incidents-summary__label {
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -351,10 +351,10 @@
 }
 
 /* ═══════════════════════════════════════════
-   TICKETS — Tabs
+   INCIDENTS — Tabs
    ═══════════════════════════════════════════ */
 
-.tickets-tabs {
+.incidents-tabs {
     display: flex;
     gap: var(--space-1);
     margin-bottom: var(--space-5);
@@ -365,7 +365,7 @@
     width: fit-content;
 }
 
-.tickets-tabs__btn {
+.incidents-tabs__btn {
     padding: var(--space-2) var(--space-4);
     border-radius: var(--radius-md);
     font-size: var(--text-sm);
@@ -378,7 +378,7 @@
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 2.2);
 }
 
-.tickets-tabs__btn::before {
+.incidents-tabs__btn::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -391,7 +391,7 @@
     transition: all var(--transition-base);
 }
 
-.tickets-tabs__btn::after {
+.incidents-tabs__btn::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -402,38 +402,74 @@
     transition: opacity var(--transition-base);
 }
 
-.tickets-tabs__btn:hover {
+.incidents-tabs__btn:hover {
     color: var(--text-primary);
     box-shadow: var(--lg-btn-shadow), var(--lg-btn-specular);
 }
 
-.tickets-tabs__btn:hover::before {
+.incidents-tabs__btn:hover::before {
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
     opacity: 1;
 }
 
-.tickets-tabs__btn:hover::after { opacity: 1; }
+.incidents-tabs__btn:hover::after { opacity: 1; }
 
-.tickets-tabs__btn--active {
+.incidents-tabs__btn--active {
     color: var(--accent);
     font-weight: 600;
     box-shadow: var(--lg-btn-shadow), var(--lg-btn-accent-specular);
 }
 
-.tickets-tabs__btn--active::before {
+.incidents-tabs__btn--active::before {
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
     opacity: 1;
 }
 
-.tickets-tabs__btn--active::after {
+.incidents-tabs__btn--active::after {
     background: var(--lg-btn-accent-overlay);
     opacity: 1;
 }
 
 /* ═══════════════════════════════════════════
-   TICKETS — Card grid
+   INCIDENTS — Confidence bar
+   ═══════════════════════════════════════════ */
+
+.confidence-bar {
+    display: inline-block;
+    width: 80px;
+    height: 6px;
+    background: var(--bg-surface);
+    border-radius: 3px;
+    overflow: hidden;
+    vertical-align: middle;
+}
+
+.confidence-bar__fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.confidence-bar__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-left: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+.incident-view-btn {
+    padding: 2px 10px;
+}
+
+.text-warning { color: var(--warning); }
+.text-info { color: var(--info); }
+
+/* ═══════════════════════════════════════════
+   TICKETS — Card grid (legacy, kept for backward compat)
    ═══════════════════════════════════════════ */
 
 .tickets-grid {
@@ -442,7 +478,6 @@
     gap: var(--space-3);
 }
 
-/* Card shell: left accent bar + content side by side */
 .ticket-card {
     display: flex;
     background: var(--card-bg);
@@ -461,7 +496,6 @@
     box-shadow: var(--card-shadow-hover);
 }
 
-/* Coloured left-border accent (3px) */
 .ticket-card__accent-bar {
     width: 3px;
     flex-shrink: 0;
@@ -469,9 +503,7 @@
 }
 
 .ticket-card--accident .ticket-card__accent-bar { background: var(--danger); }
-.ticket-card--vehicle  .ticket-card__accent-bar { background: var(--accent); }
 
-/* Content area */
 .ticket-card__inner {
     flex: 1;
     padding: var(--space-3) var(--space-4);

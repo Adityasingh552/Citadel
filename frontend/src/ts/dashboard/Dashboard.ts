@@ -3,8 +3,7 @@
 import { api } from '../api.js';
 import type { DashboardView } from '../types/index.js';
 import { renderOverview } from './views/Overview.js';
-import { renderEvents } from './views/Events.js';
-import { renderTickets } from './views/Tickets.js';
+import { renderIncidents } from './views/Incidents.js';
 import { renderLiveFeed } from './views/LiveFeed.js';
 import { renderMonitor, destroyMonitor } from './views/Monitor.js';
 import { renderCameras, destroyCameras } from './views/Cameras.js';
@@ -12,36 +11,33 @@ import { renderSettings } from './views/Settings.js';
 
 /* ── SVG Icons (minimal line-style, 18×18) ── */
 const ICONS: Record<string, string> = {
-  overview: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
-  events:   `<svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`,
-  tickets:  `<svg viewBox="0 0 24 24"><path d="M15 5v2m0 4v2m0 4v2"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/></svg>`,
-  live:     `<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>`,
-  monitor:  `<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
-  cameras:  `<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
-  settings: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
+  overview:   `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
+  incidents:  `<svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  live:       `<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>`,
+  monitor:    `<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
+  cameras:    `<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+  settings:   `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
 };
 
 const ICON_SUN = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
 const ICON_MOON = `<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
 
 const NAV_ITEMS: { id: DashboardView; label: string; section?: string }[] = [
-  { id: 'overview', label: 'Overview', section: 'Analytics' },
-  { id: 'events',   label: 'Events' },
-  { id: 'tickets',  label: 'Tickets' },
-  { id: 'live',     label: 'Manual Feed', section: 'Operations' },
-  { id: 'monitor',  label: 'Live Monitor' },
-  { id: 'cameras',  label: 'Cameras' },
-  { id: 'settings', label: 'Settings', section: 'System' },
+  { id: 'overview',   label: 'Overview', section: 'Analytics' },
+  { id: 'incidents',  label: 'Incidents' },
+  { id: 'live',       label: 'Manual Feed', section: 'Operations' },
+  { id: 'monitor',    label: 'Live Monitor' },
+  { id: 'cameras',    label: 'Cameras' },
+  { id: 'settings',   label: 'Settings', section: 'System' },
 ];
 
 const VIEW_TITLES: Record<DashboardView, string> = {
-  overview: 'Overview',
-  events:   'Events',
-  tickets:  'Tickets',
-  live:     'Manual Feed',
-  monitor:  'Live Monitor',
-  cameras:  'Cameras',
-  settings: 'Settings',
+  overview:   'Overview',
+  incidents:  'Incidents',
+  live:       'Manual Feed',
+  monitor:    'Live Monitor',
+  cameras:    'Cameras',
+  settings:   'Settings',
 };
 
 /* ── Theme management ── */
@@ -88,13 +84,12 @@ function renderViewContent(view: DashboardView, container: HTMLElement): void {
   destroyCameras();
 
   switch (view) {
-    case 'overview': renderOverview(container); break;
-    case 'events':   renderEvents(container);   break;
-    case 'tickets':  renderTickets(container);   break;
-    case 'live':     renderLiveFeed(container);  break;
-    case 'monitor':  renderMonitor(container);   break;
-    case 'cameras':  renderCameras(container);   break;
-    case 'settings': renderSettings(container);  break;
+    case 'overview':   renderOverview(container);   break;
+    case 'incidents':  renderIncidents(container);  break;
+    case 'live':       renderLiveFeed(container);   break;
+    case 'monitor':    renderMonitor(container);    break;
+    case 'cameras':    renderCameras(container);    break;
+    case 'settings':   renderSettings(container);   break;
   }
 }
 

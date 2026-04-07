@@ -2,7 +2,7 @@
  *  Premium editorial layout with large metrics and section headers. */
 
 import { api } from '../../api.js';
-import type { SystemStats, ServiceStatus } from '../../types/index.js';
+import type { SystemStats, ServiceStatus, IncidentStats } from '../../types/index.js';
 import { formatNumber } from '../../utils/formatters.js';
 import { renderBarChart, renderDonutChart } from '../../utils/charts.js';
 
@@ -40,10 +40,10 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
           </div>
           <div class="card">
             <div class="card__header">
-              <span class="card__title">Severity Breakdown</span>
+              <span class="card__title">Confidence Distribution</span>
             </div>
             <div class="chart-container" style="height: 220px;">
-              <canvas id="severity-chart"></canvas>
+              <canvas id="confidence-chart"></canvas>
             </div>
           </div>
         </div>
@@ -54,11 +54,11 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
         <div class="overview-grid__recent">
           <div class="card">
             <div class="card__header">
-              <span class="card__title">Recent Events</span>
+              <span class="card__title">Recent Incidents</span>
             </div>
-            <div id="recent-events">
+            <div id="recent-incidents">
               <div class="empty-state" style="padding: var(--space-8);">
-                <div class="empty-state__title">Loading events...</div>
+                <div class="empty-state__title">Loading incidents...</div>
               </div>
             </div>
           </div>
@@ -105,24 +105,31 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
     renderServiceStatus(null);
   }
 
-  // Fetch stats and render
+  // Fetch incident stats and render consolidated cards
+  let incidentStats: IncidentStats | null = null;
+  try {
+    incidentStats = await api.get<IncidentStats>('/incidents/stats/overview');
+  } catch {}
+
+  renderStatsCards(incidentStats, alertStats);
+
+  // Fetch system stats for timeline
   try {
     const stats = await api.get<SystemStats>('/stats');
-    renderStatsCards(stats, alertStats ? alertStats.total_sent : null);
-    renderCharts(stats);
+    renderCharts(stats, incidentStats);
   } catch {
-    renderStatsCards(null, null);
+    renderCharts(null, incidentStats);
   }
 
-  // Fetch recent events
+  // Fetch recent incidents
   try {
-    const { events } = await api.get<{ events: Array<Record<string, unknown>> }>('/events', { limit: '5' });
-    renderRecentEvents(events);
+    const { incidents } = await api.get<{ incidents: Array<Record<string, unknown>> }>('/incidents', { limit: '5' });
+    renderRecentIncidents(incidents);
   } catch {
-    const el = document.getElementById('recent-events');
+    const el = document.getElementById('recent-incidents');
     if (el) el.innerHTML = `
       <div class="empty-state" style="padding: var(--space-8);">
-        <div class="empty-state__title">No events detected yet</div>
+        <div class="empty-state__title">No incidents detected yet</div>
         <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
       </div>
     `;
@@ -144,14 +151,14 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
 
   // Fetch top incident locations
   try {
-    const { events } = await api.get<{ events: Array<Record<string, unknown>> }>('/events', { limit: '200' });
-    renderTopLocations(events);
+    const { incidents } = await api.get<{ incidents: Array<Record<string, unknown>> }>('/incidents', { limit: '200' });
+    renderTopLocations(incidents);
   } catch {
     const el = document.getElementById('top-locations');
     if (el) el.innerHTML = `
       <div class="empty-state" style="padding: var(--space-8);">
         <div class="empty-state__title">No location data available</div>
-        <div class="empty-state__desc">Location data appears when events include camera metadata</div>
+        <div class="empty-state__desc">Location data appears when incidents include camera metadata</div>
       </div>
     `;
   }
@@ -199,16 +206,16 @@ function renderServiceStatus(status: ServiceStatus | null): void {
 }
 
 const STATS_ICONS: Record<string, string> = {
-  'Total Events': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>`,
-  'Accidents': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
-  'Tickets': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`,
-  'Alerts Sent': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
-  'Delivery Rate': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>`,
-  'Pending Review': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`
+  'Total Incidents': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
+  'Resolved': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`,
+  'Avg Confidence': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>`,
+  'Alert Success Rate': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
+  'Pending Review': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`,
+  'Active Monitors': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`
 };
 
 function renderStatsPlaceholder(): string {
-  return ['Total Events', 'Accidents', 'Tickets', 'Alerts Sent', 'Delivery Rate', 'Pending Review'].map(label => `
+  return ['Total Incidents', 'Resolved', 'Avg Confidence', 'Alert Success Rate', 'Pending Review', 'Active Monitors'].map(label => `
       <div class="stats-card">
         <div class="stats-card__header">
           <div class="stats-card__label">${label}</div>
@@ -221,33 +228,30 @@ function renderStatsPlaceholder(): string {
     `).join('');
 }
 
-function renderStatsCards(stats: SystemStats | null, alertsCount: number | null): void {
+function renderStatsCards(incidentStats: IncidentStats | null, alertStats: any): void {
   const el = document.getElementById('stats-row');
   if (!el) return;
 
-  const totalSent = alertsCount ?? 0;
-  const totalFailed = 0;
-  const deliveryRate = totalSent + totalFailed > 0
-    ? `${((totalSent / (totalSent + totalFailed)) * 100).toFixed(0)}%`
+  const totalIncidents = incidentStats ? formatNumber(incidentStats.total_incidents) : '—';
+  const resolved = incidentStats ? formatNumber(incidentStats.resolved_count) : '—';
+  const avgConf = incidentStats && incidentStats.avg_confidence > 0
+    ? `${(incidentStats.avg_confidence * 100).toFixed(0)}%`
+    : '—';
+  const pending = incidentStats ? formatNumber(incidentStats.pending_count) : '—';
+
+  const alertTotal = alertStats ? alertStats.total_sent + alertStats.total_failed : 0;
+  const alertRate = alertTotal > 0
+    ? `${((alertStats.total_sent / alertTotal) * 100).toFixed(0)}%`
     : '—';
 
-  const vals = stats
-    ? [
-      { label: 'Total Events',   value: formatNumber(stats.total_events) },
-      { label: 'Accidents',      value: formatNumber(stats.total_accidents) },
-      { label: 'Tickets',        value: formatNumber(stats.total_tickets) },
-      { label: 'Alerts Sent',    value: alertsCount !== null ? formatNumber(alertsCount) : '—' },
-      { label: 'Delivery Rate',  value: deliveryRate },
-      { label: 'Pending Review', value: '—' },
-    ]
-    : [
-      { label: 'Total Events',   value: '—' },
-      { label: 'Accidents',      value: '—' },
-      { label: 'Tickets',        value: '—' },
-      { label: 'Alerts Sent',    value: '—' },
-      { label: 'Delivery Rate',  value: '—' },
-      { label: 'Pending Review', value: '—' },
-    ];
+  const vals = [
+    { label: 'Total Incidents',   value: totalIncidents },
+    { label: 'Resolved',          value: resolved },
+    { label: 'Avg Confidence',    value: avgConf },
+    { label: 'Alert Success Rate',value: alertRate },
+    { label: 'Pending Review',    value: pending },
+    { label: 'Active Monitors',   value: '—' },
+  ];
 
   el.innerHTML = vals.map(s => `
     <div class="stats-card">
@@ -261,28 +265,18 @@ function renderStatsCards(stats: SystemStats | null, alertsCount: number | null)
     </div>
   `).join('');
 
-  // Fetch pending tickets count
-  api.get<{ total: number }>('/tickets', { status: 'pending', limit: '1' })
+  // Fetch active monitors count
+  api.get<{ active_count: number; total_count: number }>('/cameras/monitor/status')
     .then(resp => {
-      const pendingEl = el.querySelector('.stats-card:nth-child(6) .stats-card__value');
-      if (pendingEl) pendingEl.textContent = formatNumber(resp.total);
-    })
-    .catch(() => {});
-
-  // Compute real delivery rate from alert stats
-  api.get<{ total_sent: number; total_failed: number }>('/alerts/stats')
-    .then(resp => {
-      const total = resp.total_sent + resp.total_failed;
-      const rate = total > 0 ? `${((resp.total_sent / total) * 100).toFixed(0)}%` : '—';
-      const rateEl = el.querySelector('.stats-card:nth-child(5) .stats-card__value');
-      if (rateEl) rateEl.textContent = rate;
+      const monEl = el.querySelector('.stats-card:nth-child(6) .stats-card__value');
+      if (monEl) monEl.textContent = `${resp.active_count}/${resp.total_count}`;
     })
     .catch(() => {});
 }
 
-function renderCharts(stats: SystemStats): void {
+function renderCharts(stats: SystemStats | null, incidentStats: IncidentStats | null): void {
   const timelineCanvas = document.getElementById('timeline-chart') as HTMLCanvasElement;
-  if (timelineCanvas) {
+  if (timelineCanvas && stats) {
     renderBarChart(timelineCanvas, stats.timeline_24h.map(t => ({
       label: t.hour,
       value: t.count,
@@ -290,25 +284,38 @@ function renderCharts(stats: SystemStats): void {
     })));
   }
 
-  const severityCanvas = document.getElementById('severity-chart') as HTMLCanvasElement;
-  if (severityCanvas) {
-    const sb = stats.severity_breakdown;
-    renderDonutChart(severityCanvas, [
-      { label: 'High',   value: sb.high,   color: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#f87171' },
-      { label: 'Medium', value: sb.medium,  color: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim() || '#fbbf24' },
-      { label: 'Low',    value: sb.low,    color: getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#34d399' },
+  const confidenceCanvas = document.getElementById('confidence-chart') as HTMLCanvasElement;
+  if (confidenceCanvas && incidentStats && incidentStats.confidence_distribution.length > 0) {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6366f1';
+    renderBarChart(confidenceCanvas, incidentStats.confidence_distribution.map(bin => ({
+      label: bin.label,
+      value: bin.count,
+      color: bin.count > 0 ? accent : 'var(--text-muted)',
+    })));
+  } else if (confidenceCanvas) {
+    renderBarChart(confidenceCanvas, [
+      { label: '50-55%', value: 0, color: 'var(--text-muted)' },
+      { label: '55-60%', value: 0, color: 'var(--text-muted)' },
+      { label: '60-65%', value: 0, color: 'var(--text-muted)' },
+      { label: '65-70%', value: 0, color: 'var(--text-muted)' },
+      { label: '70-75%', value: 0, color: 'var(--text-muted)' },
+      { label: '75-80%', value: 0, color: 'var(--text-muted)' },
+      { label: '80-85%', value: 0, color: 'var(--text-muted)' },
+      { label: '85-90%', value: 0, color: 'var(--text-muted)' },
+      { label: '90-95%', value: 0, color: 'var(--text-muted)' },
+      { label: '95-100%', value: 0, color: 'var(--text-muted)' },
     ]);
   }
 }
 
-function renderRecentEvents(events: Array<Record<string, unknown>>): void {
-  const el = document.getElementById('recent-events');
+function renderRecentIncidents(incidents: Array<Record<string, unknown>>): void {
+  const el = document.getElementById('recent-incidents');
   if (!el) return;
 
-  if (!events.length) {
+  if (!incidents.length) {
     el.innerHTML = `
       <div class="empty-state" style="padding: var(--space-8);">
-        <div class="empty-state__title">No events detected yet</div>
+        <div class="empty-state__title">No incidents detected yet</div>
         <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
       </div>
     `;
@@ -320,22 +327,24 @@ function renderRecentEvents(events: Array<Record<string, unknown>>): void {
       <thead>
         <tr>
           <th>Time</th>
-          <th>Type</th>
-          <th>Severity</th>
           <th>Confidence</th>
+          <th>Severity</th>
+          <th>Status</th>
           <th>Source</th>
         </tr>
       </thead>
       <tbody>
-        ${events.map(e => `
+        ${incidents.map(i => {
+          const statusClass = i.status === 'resolved' ? 'text-success' : i.status === 'pending' ? 'text-warning' : 'text-muted';
+          return `
           <tr>
-            <td>${new Date(e.timestamp as string).toLocaleString()}</td>
-            <td><span class="badge badge--${e.event_type}">${e.event_type}</span></td>
-            <td><span class="badge badge--${e.severity}">${e.severity}</span></td>
-            <td>${((e.confidence as number) * 100).toFixed(1)}%</td>
-            <td style="color: var(--text-muted);">${e.source_video || '—'}</td>
+            <td>${new Date(i.timestamp as string).toLocaleString()}</td>
+            <td>${((i.confidence as number) * 100).toFixed(1)}%</td>
+            <td><span class="badge badge--${i.severity}">${i.severity}</span></td>
+            <td><span class="${statusClass}" style="font-weight:600; text-transform:capitalize; font-size:0.8rem;">${i.status}</span></td>
+            <td style="color: var(--text-muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${i.source_video || '—'}</td>
           </tr>
-        `).join('')}
+        `}).join('')}
       </tbody>
     </table>
   `;
@@ -391,25 +400,25 @@ function renderRecentAlerts(alerts: Array<Record<string, unknown>>): void {
   `;
 }
 
-function renderTopLocations(events: Array<Record<string, unknown>>): void {
+function renderTopLocations(incidents: Array<Record<string, unknown>>): void {
   const el = document.getElementById('top-locations');
   if (!el) return;
 
-  if (!events.length) {
+  if (!incidents.length) {
     el.innerHTML = `
       <div class="empty-state" style="padding: var(--space-8);">
         <div class="empty-state__title">No location data available</div>
-        <div class="empty-state__desc">Location data appears when events include camera metadata</div>
+        <div class="empty-state__desc">Location data appears when incidents include camera metadata</div>
       </div>
     `;
     return;
   }
 
   const locationCounts: Record<string, number> = {};
-  for (const e of events) {
-    const meta = e.metadata as Record<string, unknown> | null;
+  for (const i of incidents) {
+    const meta = i.metadata as Record<string, unknown> | null;
     const cameraName = meta?.camera_name as string | undefined;
-    const sourceVideo = e.source_video as string | undefined;
+    const sourceVideo = i.source_video as string | undefined;
     const location = cameraName || sourceVideo || 'Unknown';
     locationCounts[location] = (locationCounts[location] || 0) + 1;
   }
@@ -422,7 +431,7 @@ function renderTopLocations(events: Array<Record<string, unknown>>): void {
     el.innerHTML = `
       <div class="empty-state" style="padding: var(--space-8);">
         <div class="empty-state__title">No location data available</div>
-        <div class="empty-state__desc">Location data appears when events include camera metadata</div>
+        <div class="empty-state__desc">Location data appears when incidents include camera metadata</div>
       </div>
     `;
     return;

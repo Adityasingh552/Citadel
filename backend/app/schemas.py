@@ -84,7 +84,6 @@ class SeverityBreakdown(BaseModel):
 class StatsOut(BaseModel):
     total_events: int
     total_accidents: int
-    total_vehicles: int
     total_tickets: int
     severity_breakdown: SeverityBreakdown
     timeline_24h: list[TimelinePoint]
@@ -96,6 +95,46 @@ class ServiceStatusOut(BaseModel):
     twilio: bool
     telegram: bool
     email: bool
+
+
+# --- Incidents (unified events + tickets) ---
+
+class ConfidenceBin(BaseModel):
+    label: str
+    count: int
+
+
+class IncidentOut(BaseModel):
+    id: str
+    ticket_id: Optional[str] = None
+    timestamp: datetime
+    event_type: str
+    confidence: float
+    severity: str
+    evidence_path: Optional[str] = None
+    source_video: Optional[str] = None
+    metadata: Optional[dict] = Field(None, alias="metadata_")
+    status: str
+    issued_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class IncidentList(BaseModel):
+    incidents: list[IncidentOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class IncidentStatsOut(BaseModel):
+    total_incidents: int
+    resolved_count: int
+    pending_count: int
+    issued_count: int
+    avg_confidence: float
+    confidence_distribution: list[ConfidenceBin]
 
 
 # --- Detection ---

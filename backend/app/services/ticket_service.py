@@ -88,9 +88,7 @@ def get_ticket_count(db: Session) -> int:
 
 def _build_vehicle_description(event: Event) -> str:
     """Generate a vehicle description from event data."""
-    if event.event_type == "accident":
-        return "Vehicles involved in detected accident"
-    return "Detected vehicle in traffic scene"
+    return "Vehicles involved in detected accident"
 
 
 def _build_location_info(event: Event) -> str:
