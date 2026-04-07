@@ -1,194 +1,207 @@
-# 🏰 Citadel
+# Citadel
 
-**AI-Powered Traffic Safety Analytics** — Detect accidents in real-time from live California traffic cameras, process uploaded footage, log events, and auto-generate violation tickets.
+AI-powered traffic safety analytics platform for accident detection from uploaded media and live DOT camera networks.
 
-## Features
+## What It Does
 
-- **AI Detection** — Fine-tuned DETR model for accidents & vehicles with bounding-box evidence
-- **Live Camera Monitoring** — Connect to 12 Caltrans CCTV districts (~thousands of cameras) with HLS video & snapshot support
-- **Automated Ticketing** — Auto-generate violation tickets with an `issued → pending → resolved` workflow
-- **Multi-Channel Alerts** — Automated notifications for severe accidents via Twilio (voice calls), Email, and Webhooks with configurable cooldowns
-- **Interactive Map** — Leaflet-based map showing camera locations across all California districts
-- **Supabase Auth** — Email/password authentication with session management
-- **Dashboard** — Live monitoring, real-time activity feed, evidence gallery, and comprehensive statistics
-- **Runtime Settings** — Adjust AI confidence thresholds and alert toggles on the fly
+- Detects accidents from videos/images using a YOLO26 ONNX model.
+- Monitors live Caltrans + Iowa DOT cameras (snapshot and HLS stream modes).
+- Creates incident events and ticket workflow records (`issued -> pending -> resolved`).
+- Stores evidence with a hybrid strategy: local-first + asynchronous Supabase Storage backfill.
+- Dispatches alerts through Twilio, Email, Webhook, and Telegram with cooldown controls.
+- Provides a TypeScript dashboard with overview stats, incidents, monitoring, cameras, and settings.
 
 ## Tech Stack
 
-| Layer        | Technology                                |
-|--------------|-------------------------------------------|
-| **Frontend** | TypeScript, Vite, Vanilla CSS, Leaflet    |
-| **Backend**  | Python 3.10+, FastAPI, Uvicorn            |
-| **AI/ML**    | PyTorch (CPU), DETR, Timm, Transformers   |
-| **Database** | Supabase PostgreSQL + SQLAlchemy           |
-| **Vision**   | OpenCV, Pillow                            |
-| **Auth**     | Supabase Auth (email/password)            |
-| **Cameras**  | Caltrans CCTV CSV feeds, 3-tier caching   |
+- Frontend: TypeScript, Vite, Vanilla CSS, Leaflet
+- Backend: FastAPI, SQLAlchemy, Uvicorn
+- Model runtime: ONNX Runtime + OpenCV + Pillow
+- Database: Supabase Postgres
+- Auth: Supabase Auth (email/password)
+- Storage: Supabase Storage (`ticket-evidence`) with local evidence fallback
+
+## Repository Layout
+
+- `backend/` FastAPI app, services, model pipeline, and API routes
+- `frontend/` Vite app and dashboard UI
+- `weights/` optional local model artifacts
 
 ## Quick Start
 
-**Prerequisites:** Python 3.10+, Node.js 18+
+Prerequisites:
+
+- Python 3.10+
+- Node.js 18+
+
+Clone and install:
 
 ```bash
-# Clone
-git clone https://github.com/Adityasingh552/Citadel.git && cd Citadel
+git clone https://github.com/gopesh353/Citadel.git
+cd Citadel
 
-# Backend
-python -m venv venv && source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env
-# Edit backend/.env — set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, etc.
 
-# Frontend
-cd frontend && npm install && cd ..
-cp frontend/.env.example frontend/.env
-# Edit frontend/.env — set VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+cd frontend
+npm install
+cd ..
 ```
 
-**Run** (two terminals):
+Create env files:
 
 ```bash
-# Terminal 1 — API
-cd backend && uvicorn app.main:app --reload --port 8000
-
-# Terminal 2 — UI
-cd frontend && npm run dev
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 ```
 
-Frontend → `http://localhost:3000` · API → `http://localhost:8000` · Docs → `http://localhost:8000/docs`
+Run locally:
 
-> Model weights (~170 MB) are downloaded automatically on first startup.
-> Caltrans camera data is cached locally and refreshed automatically.
+```bash
+# Terminal 1
+cd backend
+uvicorn app.main:app --reload --port 8000
 
-## Recent Updates
+# Terminal 2
+cd frontend
+npm run dev
+```
 
-**Latest updates:**
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:8000`
+- Swagger: `http://localhost:8000/docs`
 
-- **Pause & Resume Monitoring** — Temporarily pause individual camera analysis threads without losing state
-- **Evidence Gallery & Activity Feed** — Dedicated UI views for browsing detection snapshots and tracking real-time events
-- **Multi-Channel Emergency Alerts** — Automated notifications via Twilio (voice calls), Email, and Webhooks for severe accidents, featuring configurable cooldowns and dispatch tracking
-- **Camera Stream Resilience** — HLS Proxy support, exponential backoff, and URL validation for robust ffmpeg stream capture
+## Environment Variables
 
-## Configuration
+Use `backend/.env.example` and `frontend/.env.example` as source of truth.
 
-Environment variables in `backend/.env`:
+Backend required:
 
-| Variable               | Default                                    | Description                  |
-|------------------------|--------------------------------------------|------------------------------|
-| `DATABASE_URL`         | *(required)*                               | Supabase Postgres connection |
-| `SUPABASE_URL`         | *(required)*                               | Supabase project URL         |
-| `SUPABASE_ANON_KEY`    | *(required)*                               | Supabase anon/public key     |
-| `SUPABASE_SERVICE_KEY` | *(required)*                               | Supabase service role key    |
-| `SUPABASE_JWT_SECRET`  | *(required)*                               | JWT signing secret           |
-| `MODEL_NAME`           | `gopesh353/traffic-accident-detection-detr` | Detection model identifier  |
-| `CONFIDENCE_THRESHOLD` | `0.7`                                      | Min detection confidence     |
-| `EVIDENCE_DIR`         | `./evidence`                               | Saved evidence directory     |
-| `UPLOADS_DIR`          | `./uploads`                                | Uploaded files directory     |
-| `DATA_DIR`             | `./data`                                   | Local cache for camera CSV data |
+- `DATABASE_URL` - Supabase Postgres connection string
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY`
 
-Runtime detection settings (confidence thresholds, alert toggles, etc.) can be changed live via the Settings API or dashboard — persisted in `backend/runtime_settings.json`.
+Backend common optional:
 
-## API
+- `MODEL_PATH` (default `./models/model.onnx`)
+- `MODEL_URL` (auto-download source)
+- `EVIDENCE_DIR` (default `./evidence`)
+- `UPLOADS_DIR` (default `./uploads`)
+- `CITADEL_BASE_URL` (public URL used in notifications)
+- `CAMERA_LIST_CACHE_TTL_HOURS` (default `24`)
+- Twilio/Telegram notification credentials
 
-All endpoints except `/api/health` and `/api/auth/login` require `Authorization: Bearer <token>`.
+Frontend:
 
-### Core
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_API_URL` (set for production, optional in local dev)
 
-| Method   | Endpoint                        | Description                          |
-|----------|---------------------------------|--------------------------------------|
-| `GET`    | `/api/health`                   | Health check                         |
-| `POST`   | `/api/auth/login`              | Admin login → JWT                    |
-| `GET`    | `/api/events`                  | List detection events                |
-| `GET`    | `/api/events/feed`             | Real-time activity feed (SSE/polling)|
-| `GET`    | `/api/events/evidence`         | Fetch evidence gallery               |
-| `GET`    | `/api/tickets`                 | List tickets                         |
-| `GET`    | `/api/tickets/{id}`            | Get a single ticket                  |
-| `PATCH`  | `/api/tickets/{id}`            | Update ticket status                 |
-| `GET`    | `/api/settings`                | Get runtime settings                 |
-| `PUT`    | `/api/settings`                | Update runtime settings              |
-| `DELETE` | `/api/settings/data`           | Delete all events, tickets & files   |
-| `GET`    | `/api/stats`                   | Dashboard statistics                 |
+## Auth and Access Model
 
-### Detection
+- Login endpoint: `POST /api/auth/login`
+- Frontend stores Supabase access + refresh tokens and sends bearer token on API calls.
+- Most API endpoints require auth via `get_current_admin` (Supabase token validation).
+- Public health endpoint: `GET /api/health`
 
-| Method   | Endpoint                         | Description                          |
-|----------|----------------------------------|--------------------------------------|
-| `POST`   | `/api/detect/video`             | Process a video file                 |
-| `POST`   | `/api/detect/image`             | Analyze a single image               |
-| `POST`   | `/api/detect/images`            | Batch analyze multiple images        |
-| `GET`    | `/api/detect/progress/{job_id}` | Poll video processing progress       |
+## Evidence Storage Behavior
 
-### Cameras
+Current behavior is intentionally resilient:
 
-| Method   | Endpoint                                  | Description                                |
-|----------|-------------------------------------------|--------------------------------------------|
-| `GET`    | `/api/cameras/districts`                  | List available Caltrans districts           |
-| `GET`    | `/api/cameras`                            | List cameras (filter by district, search)   |
-| `GET`    | `/api/cameras/{camera_id}/info`           | Get full camera details                     |
-| `GET`    | `/api/cameras/{camera_id}/snapshot`       | Fetch latest camera snapshot (proxied JPEG) |
-| `GET`    | `/api/cameras/{camera_id}/snapshot-url`   | Get direct snapshot URL                     |
-| `GET`    | `/api/cameras/{camera_id}/snapshot-changed` | Check if snapshot has changed (HEAD-based) |
+1. Detection writes evidence locally (`EVIDENCE_DIR`) first.
+2. Backend enqueues async upload to Supabase Storage bucket `ticket-evidence`.
+3. Event/ticket `evidence_path` is updated to the remote URL after successful upload.
+4. Local evidence remains as fallback/back-compat and is served at `/evidence/...`.
 
-### Monitoring
+This allows safe operation even if transient storage upload issues occur.
 
-| Method   | Endpoint                                  | Description                                |
-|----------|-------------------------------------------|--------------------------------------------|
-| `POST`   | `/api/cameras/monitor/start`             | Start auto-monitoring a camera feed         |
-| `POST`   | `/api/cameras/monitor/{camera_id}/pause` | Pause an active monitor             |
-| `POST`   | `/api/cameras/monitor/{camera_id}/resume`| Resume a paused monitor             |
-| `POST`   | `/api/cameras/monitor/{camera_id}/stop`  | Stop monitoring a specific camera           |
-| `POST`   | `/api/cameras/monitor/stop`              | Stop all active monitoring sessions         |
-| `GET`    | `/api/cameras/monitor/status`            | Get status for all monitors                 |
-| `GET`    | `/api/cameras/monitor/{camera_id}/status`| Get monitoring status for a specific camera |
+## API Summary
 
-## How It Works
+Core:
 
-### Upload Detection
+- `GET /api/health`
+- `POST /api/auth/login`
+- `GET /api/stats`
+- `GET /api/stats/services`
+- `GET /api/settings`
+- `PUT /api/settings`
+- `GET /api/settings/notifications`
+- `PUT /api/settings/notifications`
+- `DELETE /api/settings/data`
 
-1. **Upload** → Video or image submitted via dashboard
-2. **Detect** → Frames sampled → DETR model inference
-3. **Classify** → Severity assigned (high ≥ 85%, medium ≥ 70%, low)
-4. **Log** → Events persisted with bounding boxes + evidence frames
-5. **Ticket** → Violation tickets auto-generated for accidents
+Detection:
 
-### Live Camera Monitoring
+- `POST /api/detect/video`
+- `POST /api/detect/image`
+- `POST /api/detect/images`
+- `GET /api/detect/progress/{job_id}`
 
-1. **Discover** → Browse cameras across 12 California Caltrans districts via interactive map
-2. **Monitor** → Start AI monitoring on selected cameras (one daemon thread per camera)
-3. **Detect Changes** → HEAD-based ETag/Last-Modified checks skip unchanged snapshots
-4. **Analyze** → New frames run through the DETR model with current runtime settings
-5. **Alert** → Detections create Events and auto-generate Tickets for accidents
-6. **Persist** → Active monitors survive restarts via database persistence
+Incidents / Events / Tickets:
 
-### Camera Caching
+- `GET /api/incidents`
+- `GET /api/incidents/{incident_id}`
+- `PATCH /api/incidents/{incident_id}/status`
+- `GET /api/incidents/stats/overview`
+- `GET /api/events`
+- `GET /api/events/{event_id}`
+- `GET /api/tickets`
+- `GET /api/tickets/{ticket_id}`
+- `PATCH /api/tickets/{ticket_id}`
 
-Camera metadata is cached in three tiers for performance and resilience:
+Alerts:
 
-| Tier | TTL | Description |
-|------|-----|-------------|
-| **In-memory** | 10 min | Fastest — per-district Python dict |
-| **Local CSV** | 24 hours | Survives restarts — stored in `DATA_DIR` |
-| **Caltrans HTTP** | On-demand | Fetches fresh CSV from Caltrans servers |
+- `GET /api/alerts`
+- `GET /api/alerts/stats`
 
-On failure, the system falls back through stale caches to maintain availability.
+Cameras and monitoring:
 
-## Caltrans Districts
+- `GET /api/cameras/districts`
+- `GET /api/cameras` (supports `source=caltrans|iowa`, search, limit)
+- `GET /api/cameras/{camera_id}/info`
+- `GET /api/cameras/{camera_id}/snapshot`
+- `GET /api/cameras/{camera_id}/snapshot-url`
+- `GET /api/cameras/{camera_id}/snapshot-changed`
+- `GET /api/cameras/{camera_id}/stream-info`
+- `GET /api/cameras/hls-proxy/{path}`
+- `GET /api/cameras/iowa-hls-proxy/{path}`
+- `POST /api/cameras/monitor/start`
+- `POST /api/cameras/monitor/{camera_id}/pause`
+- `POST /api/cameras/monitor/{camera_id}/resume`
+- `POST /api/cameras/monitor/{camera_id}/stop`
+- `POST /api/cameras/monitor/stop`
+- `GET /api/cameras/monitor/status`
+- `GET /api/cameras/monitor/{camera_id}/status`
 
-| ID | Name | ID | Name |
-|----|------|----|------|
-| 1 | Northwest | 7 | Los Angeles |
-| 2 | Northeast | 8 | San Bernardino |
-| 3 | Sacramento | 9 | Bishop |
-| 4 | SF Bay Area | 10 | Stockton |
-| 5 | Central Coast | 11 | San Diego |
-| 6 | Fresno | 12 | Orange County |
+Iowa-specific compatibility routes:
+
+- `GET /api/iowa/cameras`
+- `GET /api/iowa/cameras/regions`
+- `GET /api/iowa/cameras/{camera_id}/snapshot`
+- `GET /api/iowa/cameras/{camera_id}/info`
 
 ## Testing
 
+Backend tests:
+
 ```bash
-cd backend && pytest
+cd backend
+pytest
 ```
+
+Frontend production build check:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Deployment Notes
+
+- Frontend can be deployed on Vercel.
+- Backend can be deployed on Render/Heroku-like services.
+- Ensure backend dependency source includes `backend/requirements.txt` (contains Supabase Python client).
 
 ## License
 
-Educational and research purposes.
+Educational and research use.
