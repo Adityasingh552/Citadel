@@ -15,8 +15,8 @@ export function renderHome(container: HTMLElement): void {
 
       <!-- Hero -->
       <section class="hero">
-        <video class="hero__video" autoplay muted loop playsinline preload="metadata" poster="/src/assets/home-video-poster.jpg">
-          <source src="" data-src="/src/assets/home-video-compressed.mp4" type="video/mp4">
+        <video class="hero__video" autoplay muted loop playsinline preload="metadata" poster="/assets/home-video-poster.jpg">
+          <source src="" data-src="/assets/home-video-compressed.mp4" type="video/mp4">
         </video>
         <div class="hero__overlay"></div>
         <div class="hero__content">

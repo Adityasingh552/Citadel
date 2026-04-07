@@ -826,12 +826,7 @@ function updateDetailFeedToggleUI(): void {
 
 async function stopCamera(cameraId: string): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${cameraId}/stop`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to stop monitoring');
+        await api.post(`/cameras/monitor/${cameraId}/stop`);
         Toast.show('Camera monitoring stopped', 'info');
         if (currentView === 'list') loadMonitors(true);
     } catch (err: any) {
@@ -841,12 +836,7 @@ async function stopCamera(cameraId: string): Promise<void> {
 
 async function pauseCamera(cameraId: string): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${cameraId}/pause`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to pause monitoring');
+        await api.post(`/cameras/monitor/${cameraId}/pause`);
         Toast.show('Camera monitoring paused', 'info');
         if (currentView === 'list') loadMonitors(true);
     } catch (err: any) {
@@ -856,12 +846,7 @@ async function pauseCamera(cameraId: string): Promise<void> {
 
 async function resumeCamera(cameraId: string): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${cameraId}/resume`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to resume monitoring');
+        await api.post(`/cameras/monitor/${cameraId}/resume`);
         Toast.show('Camera monitoring resumed', 'success');
         if (currentView === 'list') loadMonitors(true);
     } catch (err: any) {
@@ -871,13 +856,7 @@ async function resumeCamera(cameraId: string): Promise<void> {
 
 async function stopAllMonitors(): Promise<void> {
     try {
-        const token = api.getToken();
-        const res = await fetch('/api/cameras/monitor/stop', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to stop all monitors');
-        const data = await res.json();
+        const data = await api.post<{ stopped: number }>('/cameras/monitor/stop');
         Toast.show(`Stopped ${data.stopped} monitor(s)`, 'info');
         loadMonitors(true);
     } catch (err: any) {

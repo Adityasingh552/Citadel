@@ -109,15 +109,20 @@ class ApiClient {
         return data;
     }
 
-    async post<T>(path: string, body?: unknown): Promise<T> {
-        const res = await fetch(this.baseUrl + path, {
+    async post<T>(path: string, body?: unknown, params?: Record<string, string>): Promise<T> {
+        const url = new URL(this.baseUrl + path, window.location.origin);
+        if (params) {
+            Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+        }
+        const res = await fetch(url.toString(), {
             method: 'POST',
-            headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+            headers: this.authHeaders(body ? { 'Content-Type': 'application/json' } : undefined),
             body: body ? JSON.stringify(body) : undefined,
         });
         if (!res.ok) {
             this.handleUnauthorized(res);
-            throw new Error(`API ${res.status}: ${res.statusText}`);
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            throw new Error(err.detail || `API ${res.status}: ${res.statusText}`);
         }
         return res.json();
     }

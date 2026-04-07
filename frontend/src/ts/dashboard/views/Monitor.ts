@@ -731,24 +731,11 @@ async function startMonitoring(): Promise<void> {
     const streamInterval = streamIntervalInput ? parseInt(streamIntervalInput.value, 10) || 10 : 10;
 
     try {
-        const token = api.getToken();
-        const params = new URLSearchParams({
+        await api.post('/cameras/monitor/start', undefined, {
             camera_id: selectedCamera.id,
             stream_mode: String(useStreamMode),
             stream_interval: String(streamInterval),
         });
-        const res = await fetch(
-            `/api/cameras/monitor/start?${params.toString()}`,
-            {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-            }
-        );
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-            throw new Error(err.detail || 'Failed to start monitoring');
-        }
-        const data = await res.json();
 
         Toast.show(`Monitoring started: ${selectedCamera.location_name}`, 'success');
 
@@ -764,12 +751,7 @@ async function stopMonitoring(): Promise<void> {
     if (!selectedCamera) return;
 
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/stop`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to stop monitoring');
+        await api.post(`/cameras/monitor/${selectedCamera.id}/stop`);
 
         Toast.show('Monitoring stopped', 'info');
 
@@ -797,12 +779,7 @@ async function pauseMonitoring(): Promise<void> {
     if (!selectedCamera) return;
 
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/pause`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to pause monitoring');
+        await api.post(`/cameras/monitor/${selectedCamera.id}/pause`);
 
         Toast.show('Monitoring paused', 'info');
 
@@ -820,12 +797,7 @@ async function resumeMonitoring(): Promise<void> {
     if (!selectedCamera) return;
 
     try {
-        const token = api.getToken();
-        const res = await fetch(`/api/cameras/monitor/${selectedCamera.id}/resume`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Failed to resume monitoring');
+        await api.post(`/cameras/monitor/${selectedCamera.id}/resume`);
 
         Toast.show('Monitoring resumed', 'success');
 

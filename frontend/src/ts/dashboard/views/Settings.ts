@@ -362,13 +362,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     btn.textContent = 'Deleting...';
 
     try {
-      const token = localStorage.getItem('citadel_token');
-      const res = await fetch('/api/settings/data', {
-        method: 'DELETE',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
+      const data = await api.delete<{ deleted: { events: number; tickets: number; evidence_files: number; upload_files: number } }>('/settings/data');
       const d = data.deleted;
       Toast.show(
         `Deleted: ${d.events} events, ${d.tickets} tickets, ${d.evidence_files} evidence files, ${d.upload_files} uploads`,
