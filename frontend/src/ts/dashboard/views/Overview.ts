@@ -4,7 +4,61 @@
 import { api } from '../../api.js';
 import type { SystemStats, ServiceStatus, IncidentStats } from '../../types/index.js';
 import { formatNumber } from '../../utils/formatters.js';
-import { renderBarChart, renderDonutChart } from '../../utils/charts.js';
+import { renderBarChart } from '../../utils/charts.js';
+
+type OverviewCacheEntry = {
+  at: number;
+  services: ServiceStatus | null;
+  alertStats: any;
+  incidentStats: IncidentStats | null;
+  systemStats: SystemStats | null;
+  incidentsForView: Array<Record<string, unknown>>;
+  alerts: Array<Record<string, unknown>>;
+  activeMonitors: number | null;
+};
+
+const OVERVIEW_REVALIDATE_MS = 20000;
+const OVERVIEW_MAX_STALE_MS = 10 * 60 * 1000;
+const OVERVIEW_STORAGE_KEY = 'citadel:view:overview:v1';
+
+let _overviewCache: OverviewCacheEntry | null = loadOverviewCache();
+let _overviewRefreshPromise: Promise<void> | null = null;
+
+function loadOverviewCache(): OverviewCacheEntry | null {
+  try {
+    const raw = localStorage.getItem(OVERVIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OverviewCacheEntry;
+    if (!parsed || typeof parsed.at !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistOverviewCache(entry: OverviewCacheEntry): void {
+  _overviewCache = entry;
+  try {
+    localStorage.setItem(OVERVIEW_STORAGE_KEY, JSON.stringify(entry));
+  } catch {
+    // Ignore storage quota issues.
+  }
+}
+
+function getOverviewCache(): OverviewCacheEntry | null {
+  if (!_overviewCache) {
+    _overviewCache = loadOverviewCache();
+  }
+  if (!_overviewCache) return null;
+
+  if ((Date.now() - _overviewCache.at) > OVERVIEW_MAX_STALE_MS) {
+    _overviewCache = null;
+    localStorage.removeItem(OVERVIEW_STORAGE_KEY);
+    return null;
+  }
+
+  return _overviewCache;
+}
 
 export async function renderOverview(container: HTMLElement): Promise<void> {
   container.innerHTML = `
@@ -88,77 +142,136 @@ export async function renderOverview(container: HTMLElement): Promise<void> {
     </div>
   `;
 
-  let alertStats: any = null;
-  try {
-      alertStats = await api.get('/alerts/stats');
-      if (alertStats && alertStats.total_sent > 0) {
-          const mEl = document.getElementById('alert-indicator-wrapper');
-          if (mEl) mEl.style.display = 'flex';
-      }
-  } catch(e) {}
-
-  // Fetch service status
-  try {
-    const services = await api.get<ServiceStatus>('/stats/services');
-    renderServiceStatus(services);
-  } catch {
-    renderServiceStatus(null);
+  const cached = getOverviewCache();
+  if (cached) {
+    applyOverviewData(cached);
+    if ((Date.now() - cached.at) >= OVERVIEW_REVALIDATE_MS) {
+      void refreshOverviewData(true);
+    }
+    return;
   }
 
-  // Fetch incident stats and render consolidated cards
-  let incidentStats: IncidentStats | null = null;
-  try {
-    incidentStats = await api.get<IncidentStats>('/incidents/stats/overview');
-  } catch {}
+  await refreshOverviewData(true);
+}
 
-  renderStatsCards(incidentStats, alertStats);
-
-  // Fetch system stats for timeline
-  try {
-    const stats = await api.get<SystemStats>('/stats');
-    renderCharts(stats, incidentStats);
-  } catch {
-    renderCharts(null, incidentStats);
+async function refreshOverviewData(force: boolean = false): Promise<void> {
+  if (_overviewRefreshPromise) {
+    return _overviewRefreshPromise;
   }
 
-  // Fetch recent incidents
-  try {
-    const { incidents } = await api.get<{ incidents: Array<Record<string, unknown>> }>('/incidents', { limit: '5' });
-    renderRecentIncidents(incidents);
-  } catch {
-    const el = document.getElementById('recent-incidents');
-    if (el) el.innerHTML = `
-      <div class="empty-state" style="padding: var(--space-8);">
-        <div class="empty-state__title">No incidents detected yet</div>
-        <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
-      </div>
-    `;
+  _overviewRefreshPromise = (async () => {
+  const [
+    alertsStatsRes,
+    servicesRes,
+    incidentStatsRes,
+    systemStatsRes,
+    incidentsRes,
+    alertsRes,
+    monitorRes,
+  ] = await Promise.allSettled([
+    api.get('/alerts/stats', undefined, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+    api.get<ServiceStatus>('/stats/services', undefined, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+    api.get<IncidentStats>('/incidents/stats/overview', undefined, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+    api.get<SystemStats>('/stats', undefined, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+    api.get<{ incidents: Array<Record<string, unknown>> }>('/incidents', { limit: '200' }, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+    api.get<{ alerts: Array<Record<string, unknown>> }>('/alerts', { limit: '5' }, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+    api.get<{ active_count: number; total_count: number }>('/cameras/monitor/status', undefined, { ttlMs: OVERVIEW_REVALIDATE_MS, force }),
+  ]);
+
+  const successCount = [
+    alertsStatsRes,
+    servicesRes,
+    incidentStatsRes,
+    systemStatsRes,
+    incidentsRes,
+    alertsRes,
+    monitorRes,
+  ].filter(r => r.status === 'fulfilled').length;
+
+  if (successCount === 0) {
+    // Preserve existing stale cache if network failed.
+    const stale = getOverviewCache();
+    if (stale) applyOverviewData(stale);
+    return;
   }
 
-  // Fetch recent alerts
+  const payload = {
+    at: Date.now(),
+    alertStats: alertsStatsRes.status === 'fulfilled' ? alertsStatsRes.value : null,
+    services: servicesRes.status === 'fulfilled' ? servicesRes.value : null,
+    incidentStats: incidentStatsRes.status === 'fulfilled' ? incidentStatsRes.value : null,
+    systemStats: systemStatsRes.status === 'fulfilled' ? systemStatsRes.value : null,
+    incidentsForView: incidentsRes.status === 'fulfilled' ? incidentsRes.value.incidents : [],
+    alerts: alertsRes.status === 'fulfilled' ? alertsRes.value.alerts : [],
+    activeMonitors: monitorRes.status === 'fulfilled' ? monitorRes.value.active_count : null,
+  };
+
+  persistOverviewCache(payload);
+  applyOverviewData(payload);
+  })();
+
   try {
-    const { alerts } = await api.get<{ alerts: Array<Record<string, unknown>> }>('/alerts', { limit: '5' });
-    renderRecentAlerts(alerts);
-  } catch {
+    await _overviewRefreshPromise;
+  } finally {
+    _overviewRefreshPromise = null;
+  }
+}
+
+function applyOverviewData(data: {
+  at: number;
+  alertStats: any;
+  services: ServiceStatus | null;
+  incidentStats: IncidentStats | null;
+  systemStats: SystemStats | null;
+  incidentsForView: Array<Record<string, unknown>>;
+  alerts: Array<Record<string, unknown>>;
+  activeMonitors: number | null;
+}): void {
+  if (data.alertStats && data.alertStats.total_sent > 0) {
+    const mEl = document.getElementById('alert-indicator-wrapper');
+    if (mEl) mEl.style.display = 'flex';
+  } else {
+    const mEl = document.getElementById('alert-indicator-wrapper');
+    if (mEl) mEl.style.display = 'none';
+  }
+
+  renderServiceStatus(data.services);
+  renderStatsCards(data.incidentStats, data.alertStats, data.activeMonitors);
+  renderCharts(data.systemStats, data.incidentStats);
+
+  if (data.incidentsForView.length) {
+    renderRecentIncidents(data.incidentsForView.slice(0, 5));
+    renderTopLocations(data.incidentsForView);
+  } else {
+    const incidentsEl = document.getElementById('recent-incidents');
+    if (incidentsEl) {
+      incidentsEl.innerHTML = `
+        <div class="empty-state" style="padding: var(--space-8);">
+          <div class="empty-state__title">No incidents detected yet</div>
+          <div class="empty-state__desc">Upload a video in Manual Feed to start detecting</div>
+        </div>
+      `;
+    }
+
+    const topLocationsEl = document.getElementById('top-locations');
+    if (topLocationsEl) {
+      topLocationsEl.innerHTML = `
+        <div class="empty-state" style="padding: var(--space-8);">
+          <div class="empty-state__title">No location data available</div>
+          <div class="empty-state__desc">Location data appears when incidents include camera metadata</div>
+        </div>
+      `;
+    }
+  }
+
+  if (data.alerts.length) {
+    renderRecentAlerts(data.alerts);
+  } else {
     const el = document.getElementById('recent-alerts');
     if (el) el.innerHTML = `
       <div class="empty-state" style="padding: var(--space-8);">
         <div class="empty-state__title">No alerts dispatched yet</div>
         <div class="empty-state__desc">Alerts appear here when accident notifications are sent</div>
-      </div>
-    `;
-  }
-
-  // Fetch top incident locations
-  try {
-    const { incidents } = await api.get<{ incidents: Array<Record<string, unknown>> }>('/incidents', { limit: '200' });
-    renderTopLocations(incidents);
-  } catch {
-    const el = document.getElementById('top-locations');
-    if (el) el.innerHTML = `
-      <div class="empty-state" style="padding: var(--space-8);">
-        <div class="empty-state__title">No location data available</div>
-        <div class="empty-state__desc">Location data appears when incidents include camera metadata</div>
       </div>
     `;
   }
@@ -228,7 +341,7 @@ function renderStatsPlaceholder(): string {
     `).join('');
 }
 
-function renderStatsCards(incidentStats: IncidentStats | null, alertStats: any): void {
+function renderStatsCards(incidentStats: IncidentStats | null, alertStats: any, activeMonitors: number | null): void {
   const el = document.getElementById('stats-row');
   if (!el) return;
 
@@ -250,7 +363,7 @@ function renderStatsCards(incidentStats: IncidentStats | null, alertStats: any):
     { label: 'Avg Confidence',    value: avgConf },
     { label: 'Alert Success Rate',value: alertRate },
     { label: 'Pending Review',    value: pending },
-    { label: 'Active Monitors',   value: '—' },
+    { label: 'Active Monitors',   value: activeMonitors === null ? '—' : String(activeMonitors) },
   ];
 
   el.innerHTML = vals.map(s => `
@@ -265,13 +378,6 @@ function renderStatsCards(incidentStats: IncidentStats | null, alertStats: any):
     </div>
   `).join('');
 
-  // Fetch active monitors count
-  api.get<{ active_count: number; total_count: number }>('/cameras/monitor/status')
-    .then(resp => {
-      const monEl = el.querySelector('.stats-card:nth-child(6) .stats-card__value');
-      if (monEl) monEl.textContent = `${resp.active_count}/${resp.total_count}`;
-    })
-    .catch(() => {});
 }
 
 function renderCharts(stats: SystemStats | null, incidentStats: IncidentStats | null): void {

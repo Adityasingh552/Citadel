@@ -5,6 +5,83 @@ import { api } from '../../api.js';
 import type { AppSettings } from '../../types/index.js';
 import { Toast } from '../../utils/toast.js';
 
+type SettingsCacheEntry = {
+  at: number;
+  settings: AppSettings | null;
+  notifications: any;
+};
+
+const SETTINGS_REVALIDATE_MS = 20000;
+const SETTINGS_MAX_STALE_MS = 10 * 60 * 1000;
+const SETTINGS_STORAGE_KEY = 'citadel:view:settings:v1';
+
+let _settingsCache: SettingsCacheEntry | null = loadSettingsCache();
+let _settingsRefreshPromise: Promise<SettingsCacheEntry | null> | null = null;
+
+function loadSettingsCache(): SettingsCacheEntry | null {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SettingsCacheEntry;
+    if (!parsed || typeof parsed.at !== 'number') return null;
+    if ((Date.now() - parsed.at) > SETTINGS_MAX_STALE_MS) {
+      localStorage.removeItem(SETTINGS_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistSettingsCache(entry: SettingsCacheEntry): void {
+  _settingsCache = entry;
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(entry));
+  } catch {
+    // Ignore storage quota issues.
+  }
+}
+
+function clearSettingsCache(): void {
+  _settingsCache = null;
+  localStorage.removeItem(SETTINGS_STORAGE_KEY);
+}
+
+async function fetchSettingsData(force: boolean = false): Promise<SettingsCacheEntry | null> {
+  if (_settingsRefreshPromise) {
+    return _settingsRefreshPromise;
+  }
+
+  _settingsRefreshPromise = (async () => {
+    const [settingsRes, notificationsRes] = await Promise.allSettled([
+      api.get<AppSettings>('/settings', undefined, { ttlMs: SETTINGS_REVALIDATE_MS, force }),
+      api.get<any>('/settings/notifications', undefined, { ttlMs: SETTINGS_REVALIDATE_MS, force }),
+    ]);
+
+    const settings = settingsRes.status === 'fulfilled' ? settingsRes.value : null;
+    const notifications = notificationsRes.status === 'fulfilled' ? notificationsRes.value : null;
+
+    if (!settings && !notifications) {
+      return _settingsCache;
+    }
+
+    const next: SettingsCacheEntry = {
+      at: Date.now(),
+      settings,
+      notifications,
+    };
+    persistSettingsCache(next);
+    return next;
+  })();
+
+  try {
+    return await _settingsRefreshPromise;
+  } finally {
+    _settingsRefreshPromise = null;
+  }
+}
+
 /* ── Inline SVG icons for each section header ── */
 const IC = {
   detection: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`,
@@ -18,15 +95,23 @@ const IC = {
 };
 
 export async function renderSettings(container: HTMLElement): Promise<void> {
-  let settings: AppSettings | null = null;
-  let notifications: any = null;
-
-  try {
-    settings = await api.get<AppSettings>('/settings');
-    notifications = await api.get<any>('/settings/notifications');
-  } catch {
-    // Use defaults
+  const cached = _settingsCache || loadSettingsCache();
+  if (cached) {
+    _settingsCache = cached;
+    if ((Date.now() - cached.at) >= SETTINGS_REVALIDATE_MS) {
+      void fetchSettingsData(true).then((fresh) => {
+        if (fresh) renderSettings(container);
+      });
+    }
+  } else {
+    const fresh = await fetchSettingsData(true);
+    if (fresh) {
+      _settingsCache = fresh;
+    }
   }
+
+  let settings: AppSettings | null = _settingsCache?.settings ?? null;
+  let notifications: any = _settingsCache?.notifications ?? null;
 
   const conf = settings || {
     model_path: '',
@@ -138,7 +223,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
               </div>
               <div class="stg__info-item">
                 <span class="stg__info-label">Database</span>
-                <span class="stg__info-value">SQLite</span>
+                <span class="stg__info-value">PostgreSQL</span>
               </div>
               <div class="stg__info-item">
                 <span class="stg__info-label">Status</span>
@@ -330,6 +415,8 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
         },
       });
 
+      clearSettingsCache();
+
       Toast.show('Settings saved successfully', 'success');
     } catch {
       Toast.show('Failed to save settings', 'error');
@@ -347,6 +434,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
         confidence_threshold_cctv: 0.7,
         detect_accidents: true,
       });
+      clearSettingsCache();
       renderSettings(container);
     } catch {
       Toast.show('Failed to reset settings', 'error');

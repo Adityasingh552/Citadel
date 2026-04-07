@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
@@ -52,9 +52,15 @@ async def list_alerts(
 @router.get("/stats", response_model=AlertStatsOut)
 async def get_alert_stats(db: Session = Depends(get_db), _admin: str = Depends(get_current_admin)):
     """Get aggregate statistics for alert notifications."""
-    total_sent = db.query(func.count(AlertLog.id)).filter(AlertLog.status == "sent").scalar() or 0
-    total_failed = db.query(func.count(AlertLog.id)).filter(AlertLog.status == "failed").scalar() or 0
-    total_suppressed = db.query(func.count(AlertLog.id)).filter(AlertLog.status == "suppressed").scalar() or 0
+    totals = db.query(
+        func.sum(case((AlertLog.status == "sent", 1), else_=0)).label("sent"),
+        func.sum(case((AlertLog.status == "failed", 1), else_=0)).label("failed"),
+        func.sum(case((AlertLog.status == "suppressed", 1), else_=0)).label("suppressed"),
+    ).one()
+
+    total_sent = int(totals.sent or 0)
+    total_failed = int(totals.failed or 0)
+    total_suppressed = int(totals.suppressed or 0)
 
     # Aggregate stats per channel
     by_channel = {}

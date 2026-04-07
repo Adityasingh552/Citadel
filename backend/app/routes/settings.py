@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import Event, Ticket
 from app.schemas import SettingsOut, SettingsUpdate
+from app.storage import get_storage_service
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ async def update_notification_settings(update: dict, _admin: str = Depends(get_c
 
 @router.delete("/data")
 async def delete_all_data(db: Session = Depends(get_db), _admin: str = Depends(get_current_admin)):
-    """Delete all events, tickets, and evidence files."""
+    """Delete all events, tickets, and evidence files (both Supabase and local)."""
     settings = get_settings()
 
     # Delete all tickets first (FK constraint)
@@ -156,14 +157,22 @@ async def delete_all_data(db: Session = Depends(get_db), _admin: str = Depends(g
     event_count = db.query(Event).delete()
     db.commit()
 
-    # Clear evidence directory
-    evidence_cleared = 0
+    # Clear evidence from Supabase Storage
+    storage = get_storage_service()
+    evidence_cleared = storage.delete_all_evidence()
+    logger.info("Deleted %d evidence files from Supabase Storage", evidence_cleared)
+
+    # Clear local evidence directory (for any legacy files)
+    local_evidence_cleared = 0
     if os.path.isdir(settings.evidence_dir):
         for f in os.listdir(settings.evidence_dir):
             filepath = os.path.join(settings.evidence_dir, f)
             if os.path.isfile(filepath):
                 os.remove(filepath)
-                evidence_cleared += 1
+                local_evidence_cleared += 1
+    
+    if local_evidence_cleared > 0:
+        logger.info("Deleted %d local evidence files", local_evidence_cleared)
 
     # Clear uploads directory
     uploads_cleared = 0
@@ -175,15 +184,15 @@ async def delete_all_data(db: Session = Depends(get_db), _admin: str = Depends(g
                 uploads_cleared += 1
 
     logger.info(
-        "Deleted all data: %d events, %d tickets, %d evidence files, %d uploads",
-        event_count, ticket_count, evidence_cleared, uploads_cleared,
+        "Deleted all data: %d events, %d tickets, %d evidence files (Supabase + %d local), %d uploads",
+        event_count, ticket_count, evidence_cleared, local_evidence_cleared, uploads_cleared,
     )
 
     return {
         "deleted": {
             "events": event_count,
             "tickets": ticket_count,
-            "evidence_files": evidence_cleared,
+            "evidence_files": evidence_cleared + local_evidence_cleared,
             "upload_files": uploads_cleared,
         }
     }

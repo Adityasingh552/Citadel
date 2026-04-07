@@ -16,6 +16,10 @@ let statusPollTimer: number | null = null;
 let snapshotRefreshTimer: number | null = null;
 let snapshotLoading = false;
 let isMonitorActive = false;
+const MONITOR_STATUS_TTL_MS = 20000;
+const MONITOR_STATUS_MAX_STALE_MS = 10 * 60 * 1000;
+const MONITOR_STATUS_STORAGE_KEY = 'citadel:view:monitor:status:v1';
+let monitorStatusRefreshPromise: Promise<void> | null = null;
 
 // Video player state
 let videoPlayer: VideoPlayer | null = null;
@@ -191,6 +195,21 @@ export function renderMonitor(container: HTMLElement): void {
     initMap();
     bindEvents();
     loadCameras();
+
+    const cachedStatus = loadCachedMonitorStatus();
+    if (cachedStatus) {
+        monitorStatuses = cachedStatus.monitors;
+        const activeCountEl = document.getElementById('active-monitor-count');
+        if (activeCountEl) {
+            if (cachedStatus.active_count > 0) {
+                activeCountEl.textContent = `${cachedStatus.active_count} monitoring`;
+                activeCountEl.style.display = '';
+            } else {
+                activeCountEl.style.display = 'none';
+            }
+        }
+    }
+
     checkExistingMonitors();
 }
 
@@ -469,6 +488,7 @@ function switchFeedMode(mode: 'snapshot' | 'video'): void {
         const refreshMs = Math.max(selectedCamera.update_frequency * 60 * 1000, 30000);
         if (snapshotRefreshTimer) clearInterval(snapshotRefreshTimer);
         snapshotRefreshTimer = window.setInterval(() => {
+            if (document.hidden) return;
             if (selectedCamera) loadSnapshotIfChanged(selectedCamera);
         }, refreshMs);
     }
@@ -615,6 +635,7 @@ function selectCamera(cam: CameraInfo): void {
     const refreshMs = Math.max(cam.update_frequency * 60 * 1000, 30000);
     if (snapshotRefreshTimer) clearInterval(snapshotRefreshTimer);
     snapshotRefreshTimer = window.setInterval(() => {
+        if (document.hidden) return;
         if (selectedCamera) {
             loadSnapshotIfChanged(selectedCamera);
         }
@@ -695,7 +716,7 @@ async function loadSnapshot(cam: CameraInfo): Promise<void> {
     try {
         // Fetch snapshot through our backend proxy (handles auth)
         const res = await fetch(api.getSnapshotProxyUrl(cam.id), {
-            headers: api.getAuthHeaders(),
+            headers: await api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to fetch snapshot');
 
@@ -813,7 +834,10 @@ async function resumeMonitoring(): Promise<void> {
 
 function startStatusPolling(): void {
     stopStatusPolling();
-    statusPollTimer = window.setInterval(pollAllMonitorStatuses, 5000);
+    statusPollTimer = window.setInterval(() => {
+        if (document.hidden) return;
+        void pollAllMonitorStatuses();
+    }, 5000);
 }
 
 function stopStatusPolling(): void {
@@ -825,10 +849,17 @@ function stopStatusPolling(): void {
 
 async function pollAllMonitorStatuses(force: boolean = false): Promise<void> {
     if (!isMonitorActive) return;
+    if (document.hidden && !force) return;
+    if (monitorStatusRefreshPromise) {
+        return monitorStatusRefreshPromise;
+    }
+
+    monitorStatusRefreshPromise = (async () => {
     try {
-        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000, force });
+        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: MONITOR_STATUS_TTL_MS, force });
         if (!isMonitorActive) return;
         monitorStatuses = data.monitors;
+        persistCachedMonitorStatus(data);
 
         // Update active count badge
         const activeCountEl = document.getElementById('active-monitor-count');
@@ -865,15 +896,37 @@ async function pollAllMonitorStatuses(force: boolean = false): Promise<void> {
         updateMarkerStyles();
     } catch (err) {
         console.error('Status poll error:', err);
+        const cached = loadCachedMonitorStatus();
+        if (cached) {
+            monitorStatuses = cached.monitors;
+            const activeCountEl = document.getElementById('active-monitor-count');
+            if (activeCountEl) {
+                if (cached.active_count > 0) {
+                    activeCountEl.textContent = `${cached.active_count} monitoring`;
+                    activeCountEl.style.display = '';
+                } else {
+                    activeCountEl.style.display = 'none';
+                }
+            }
+            updateMarkerStyles();
+        }
+    }
+    })();
+
+    try {
+        await monitorStatusRefreshPromise;
+    } finally {
+        monitorStatusRefreshPromise = null;
     }
 }
 
 async function checkExistingMonitors(): Promise<void> {
     if (!isMonitorActive) return;
     try {
-        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000 });
+        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: MONITOR_STATUS_TTL_MS });
         if (!isMonitorActive) return;
         monitorStatuses = data.monitors;
+        persistCachedMonitorStatus(data);
 
         if (data.active_count > 0) {
             startStatusPolling();
@@ -886,6 +939,33 @@ async function checkExistingMonitors(): Promise<void> {
         }
     } catch {
         // Not monitoring — fine
+    }
+}
+
+function persistCachedMonitorStatus(data: MonitorStatusResponse): void {
+    try {
+        localStorage.setItem(
+            MONITOR_STATUS_STORAGE_KEY,
+            JSON.stringify({ at: Date.now(), data })
+        );
+    } catch {
+        // Ignore storage quota issues.
+    }
+}
+
+function loadCachedMonitorStatus(): MonitorStatusResponse | null {
+    try {
+        const raw = localStorage.getItem(MONITOR_STATUS_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { at: number; data: MonitorStatusResponse };
+        if (!parsed || typeof parsed.at !== 'number' || !parsed.data) return null;
+        if ((Date.now() - parsed.at) > MONITOR_STATUS_MAX_STALE_MS) {
+            localStorage.removeItem(MONITOR_STATUS_STORAGE_KEY);
+            return null;
+        }
+        return parsed.data;
+    } catch {
+        return null;
     }
 }
 
@@ -1013,7 +1093,7 @@ function updateMonitorUI(status: MonitorStatus): void {
                         </div>
                         ${d.evidence_path ? `
                             <img class="monitor-detection-item__thumb"
-                                 src="/evidence/${d.evidence_path}" alt="evidence" />
+                                 src="${resolveEvidenceSrc(d.evidence_path)}" alt="evidence" />
                         ` : ''}
                     </div>
                 `)
@@ -1041,6 +1121,11 @@ function severityColor(severity: string): string {
         case 'low': return 'info';
         default: return 'muted';
     }
+}
+
+function resolveEvidenceSrc(path: string): string {
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return `/evidence/${path}`;
 }
 
 function formatTime(iso: string): string {

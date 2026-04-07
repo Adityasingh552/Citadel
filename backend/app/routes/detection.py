@@ -20,6 +20,10 @@ from app.schemas import VideoProcessingResult, DetectionResult, BoundingBox
 from app.models import Event
 from app.services import event_service, ticket_service
 from app.routes.settings import get_runtime_settings
+from app.storage import enqueue_event_evidence_upload, is_remote_evidence_path
+
+
+_DEDUP_WINDOW_SECONDS = 60
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,27 @@ def get_processor():
 # ── Progress tracking ──────────────────────────────────────────────
 _progress: dict[str, dict] = {}  # job_id -> {current, total, percent, status}
 _progress_lock = threading.Lock()
+
+
+def _is_near_frame(frame_number: int, prior_frames: list[int], window: int) -> bool:
+    for frame in prior_frames:
+        if abs(frame_number - frame) <= window:
+            return True
+    return False
+
+
+def _existing_recent_accident(db: Session, source_video: str) -> bool:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_DEDUP_WINDOW_SECONDS)
+    return (
+        db.query(Event.id)
+        .filter(
+            Event.event_type == "accident",
+            Event.source_video == source_video,
+            Event.timestamp >= cutoff,
+        )
+        .first()
+        is not None
+    )
 
 
 def _update_progress(job_id: str, current: int, total: int):
@@ -128,63 +153,103 @@ async def detect_video(
     tickets_created = 0
     all_detections: list[DetectionResult] = []
     frame_interval = 30
+    near_dup_window = frame_interval * 3
 
-    for frame_det in result.frame_detections:
-        for det in frame_det.detections:
-            # Cross-run dedup: skip accident if a near-identical event already
-            # exists for this source file (prevents re-upload duplicates)
-            if det.label == "accident":
-                lo = frame_det.frame_number - frame_interval * 3
-                hi = frame_det.frame_number + frame_interval * 3
-                existing = (
-                    db.query(Event)
-                    .filter(
-                        Event.event_type == "accident",
-                        Event.source_video == file.filename,
-                        Event.frame_number >= lo,
-                        Event.frame_number <= hi,
-                    )
-                    .first()
+    accident_frames = [
+        frame_det.frame_number
+        for frame_det in result.frame_detections
+        if any(det.label == "accident" for det in frame_det.detections)
+    ]
+    existing_accident_frames: list[int] = []
+    if accident_frames:
+        lo = min(accident_frames) - near_dup_window
+        hi = max(accident_frames) + near_dup_window
+        existing_accident_frames = [
+            int(frame)
+            for (frame,) in (
+                db.query(Event.frame_number)
+                .filter(
+                    Event.event_type == "accident",
+                    Event.source_video == file.filename,
+                    Event.frame_number >= lo,
+                    Event.frame_number <= hi,
                 )
-                if existing:
-                    logger.debug(
-                        "Skipping duplicate accident at frame %d (matches event %s)",
-                        frame_det.frame_number, existing.id[:8],
-                    )
-                    continue
-
-            # Create event
-            event = event_service.create_event(
-                db=db,
-                event_type=det.label,
-                confidence=det.confidence,
-                severity=det.severity,
-                evidence_path=frame_det.evidence_path,
-                bbox_data=[det.bbox],
-                source_video=file.filename,
-                frame_number=frame_det.frame_number,
-                metadata={"timestamp_sec": frame_det.timestamp_sec},
-                source="manual",
+                .all()
             )
-            events_created += 1
+            if frame is not None
+        ]
 
-            # Auto-create ticket for accidents
-            if det.label == "accident":
-                ticket_service.create_ticket_from_event(db, event)
-                tickets_created += 1
+    created_accident_frames: list[int] = []
+    created_events = []
+    evidence_backfill: list[tuple[str, str]] = []
 
-            all_detections.append(DetectionResult(
-                label=det.label,
-                confidence=det.confidence,
-                bbox=BoundingBox(
-                    x=det.bbox["x"],
-                    y=det.bbox["y"],
-                    width=det.bbox["width"],
-                    height=det.bbox["height"],
+    try:
+        for frame_det in result.frame_detections:
+            for det in frame_det.detections:
+                # Cross-run + in-request dedup for accidents.
+                if det.label == "accident":
+                    prior_frames = existing_accident_frames + created_accident_frames
+                    if _is_near_frame(frame_det.frame_number, prior_frames, near_dup_window):
+                        logger.debug(
+                            "Skipping duplicate accident at frame %d for source %s",
+                            frame_det.frame_number,
+                            file.filename,
+                        )
+                        continue
+
+                event = event_service.create_event(
+                    db=db,
+                    event_type=det.label,
+                    confidence=det.confidence,
+                    severity=det.severity,
+                    evidence_path=frame_det.evidence_path,
+                    bbox_data=[det.bbox],
+                    source_video=file.filename,
+                    frame_number=frame_det.frame_number,
+                    metadata={"timestamp_sec": frame_det.timestamp_sec},
+                    source="manual",
+                    commit=False,
+                    dispatch_notifications=False,
+                )
+                created_events.append(event)
+                events_created += 1
+
+                if event.evidence_path and not is_remote_evidence_path(event.evidence_path):
+                    evidence_backfill.append((event.id, event.evidence_path))
+
+                if det.label == "accident":
+                    created_accident_frames.append(frame_det.frame_number)
+                    ticket_service.create_ticket_from_event(db, event, commit=False)
+                    tickets_created += 1
+
+                all_detections.append(DetectionResult(
                     label=det.label,
                     confidence=det.confidence,
-                ),
-            ))
+                    bbox=BoundingBox(
+                        x=det.bbox["x"],
+                        y=det.bbox["y"],
+                        width=det.bbox["width"],
+                        height=det.bbox["height"],
+                        label=det.label,
+                        confidence=det.confidence,
+                    ),
+                ))
+
+        if created_events:
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to persist video detections: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save detection results")
+
+    for event in created_events:
+        try:
+            event_service.dispatch_event_notifications(db, event, source="manual")
+        except Exception as e:
+            logger.warning("Notification dispatch failed for event %s: %s", event.id, e)
+
+    for event_id, local_path in evidence_backfill:
+        enqueue_event_evidence_upload(event_id, local_path)
 
     # Mark progress done and clean up
     with _progress_lock:
@@ -241,48 +306,62 @@ async def detect_image(
     )
 
     results = []
-    for det in detections:
-        # Cross-run dedup for image uploads: skip if same accident already exists
-        # from this source within the last 60 seconds
-        if det.label == "accident":
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
-            existing = (
-                db.query(Event)
-                .filter(
-                    Event.event_type == "accident",
-                    Event.source_video == file.filename,
-                    Event.timestamp >= cutoff,
-                )
-                .first()
-            )
-            if existing:
-                logger.debug(
-                    "Skipping duplicate accident for image %s (matches event %s)",
-                    file.filename, existing.id[:8],
-                )
+    created_events = []
+    evidence_backfill: list[tuple[str, str]] = []
+
+    existing_recent_accident = False
+    if any(det.label == "accident" for det in detections):
+        existing_recent_accident = _existing_recent_accident(db, file.filename)
+
+    try:
+        for det in detections:
+            if det.label == "accident" and existing_recent_accident:
+                logger.debug("Skipping duplicate accident for image %s", file.filename)
                 continue
 
-        # Create event
-        event = event_service.create_event(
-            db=db,
-            event_type=det.label,
-            confidence=det.confidence,
-            severity=det.severity,
-            evidence_path=evidence_path,
-            bbox_data=[det.bbox],
-            source_video=file.filename,
-            source="manual",
-        )
+            event = event_service.create_event(
+                db=db,
+                event_type=det.label,
+                confidence=det.confidence,
+                severity=det.severity,
+                evidence_path=evidence_path,
+                bbox_data=[det.bbox],
+                source_video=file.filename,
+                source="manual",
+                commit=False,
+                dispatch_notifications=False,
+            )
+            created_events.append(event)
 
-        if det.label == "accident":
-            ticket_service.create_ticket_from_event(db, event)
+            if event.evidence_path and not is_remote_evidence_path(event.evidence_path):
+                evidence_backfill.append((event.id, event.evidence_path))
 
-        results.append({
-            "label": det.label,
-            "confidence": det.confidence,
-            "bbox": det.bbox,
-            "severity": det.severity,
-        })
+            if det.label == "accident":
+                existing_recent_accident = True
+                ticket_service.create_ticket_from_event(db, event, commit=False)
+
+            results.append({
+                "label": det.label,
+                "confidence": det.confidence,
+                "bbox": det.bbox,
+                "severity": det.severity,
+            })
+
+        if created_events:
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to persist image detection: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save detection results")
+
+    for event in created_events:
+        try:
+            event_service.dispatch_event_notifications(db, event, source="manual")
+        except Exception as e:
+            logger.warning("Notification dispatch failed for event %s: %s", event.id, e)
+
+    for event_id, local_path in evidence_backfill:
+        enqueue_event_evidence_upload(event_id, local_path)
 
     return {"detections": results, "count": len(results)}
 
@@ -309,6 +388,8 @@ async def detect_images_batch(
     image_results = []
     total_events = 0
     total_tickets = 0
+    created_events = []
+    evidence_backfill: list[tuple[str, str]] = []
 
     for file in files:
         ext = os.path.splitext(file.filename or "")[1].lower()
@@ -341,24 +422,14 @@ async def detect_images_batch(
         )
 
         file_detections = []
+        existing_recent_accident = False
+        if any(det.label == "accident" for det in detections):
+            existing_recent_accident = _existing_recent_accident(db, file.filename)
+
         for det in detections:
-            # Cross-run dedup: skip if same accident from this file already exists
             if det.label == "accident":
-                cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
-                existing = (
-                    db.query(Event)
-                    .filter(
-                        Event.event_type == "accident",
-                        Event.source_video == file.filename,
-                        Event.timestamp >= cutoff,
-                    )
-                    .first()
-                )
-                if existing:
-                    logger.debug(
-                        "Skipping duplicate accident for image %s (matches event %s)",
-                        file.filename, existing.id[:8],
-                    )
+                if existing_recent_accident:
+                    logger.debug("Skipping duplicate accident for image %s", file.filename)
                     continue
 
             event = event_service.create_event(
@@ -370,11 +441,19 @@ async def detect_images_batch(
                 bbox_data=[det.bbox],
                 source_video=file.filename,
                 source="manual",
+                commit=False,
+                dispatch_notifications=False,
             )
+            created_events.append(event)
+
+            if event.evidence_path and not is_remote_evidence_path(event.evidence_path):
+                evidence_backfill.append((event.id, event.evidence_path))
+
             total_events += 1
 
             if det.label == "accident":
-                ticket_service.create_ticket_from_event(db, event)
+                existing_recent_accident = True
+                ticket_service.create_ticket_from_event(db, event, commit=False)
                 total_tickets += 1
 
             file_detections.append({
@@ -390,6 +469,23 @@ async def detect_images_batch(
             "detections": file_detections,
         })
 
+    try:
+        if created_events:
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to persist batch image detections: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save batch detection results")
+
+    for event in created_events:
+        try:
+            event_service.dispatch_event_notifications(db, event, source="manual")
+        except Exception as e:
+            logger.warning("Notification dispatch failed for event %s: %s", event.id, e)
+
+    for event_id, local_path in evidence_backfill:
+        enqueue_event_evidence_upload(event_id, local_path)
+
     return {
         "images_processed": len([r for r in image_results if r["status"] == "processed"]),
         "images_skipped": len([r for r in image_results if r["status"] != "processed"]),
@@ -397,4 +493,3 @@ async def detect_images_batch(
         "total_tickets": total_tickets,
         "results": image_results,
     }
-

@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
         define: {
             // Make backend URL available at runtime for production
             '__API_URL__': JSON.stringify(env.VITE_API_URL || ''),
+            '__SUPABASE_URL__': JSON.stringify(env.VITE_SUPABASE_URL || ''),
+            '__SUPABASE_PUBLISHABLE_KEY__': JSON.stringify(env.VITE_SUPABASE_PUBLISHABLE_KEY || ''),
         },
     };
 });

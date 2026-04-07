@@ -5,6 +5,9 @@ import { renderHome } from './home/Home.js';
 import { renderLogin } from './login/Login.js';
 import { renderDashboard, cleanupDashboard } from './dashboard/Dashboard.js';
 
+let authGateChecked = false;
+let authGateAllowed = false;
+
 const app = document.getElementById('app')!;
 
 /* ── Inject global SVG filter for Liquid Glass bend distortion ── */
@@ -24,7 +27,7 @@ const app = document.getElementById('app')!;
     document.body.prepend(svg);
 })();
 
-function route(): void {
+async function route(): Promise<void> {
     const hash = window.location.hash || '#/';
 
     // Clean up dashboard resources when navigating away
@@ -33,12 +36,19 @@ function route(): void {
     }
 
     if (hash.startsWith('#/login')) {
+        authGateChecked = false;
+        authGateAllowed = false;
         renderLogin(app);
     } else if (hash.startsWith('#/dashboard')) {
-        // Gate: must be authenticated to access dashboard
-        if (!api.isAuthenticated()) {
-            window.location.hash = '#/login';
-            return;
+        if (!authGateChecked) {
+            // Gate: must be authenticated to access dashboard
+            const authenticated = await api.isAuthenticated();
+            authGateChecked = true;
+            authGateAllowed = authenticated;
+            if (!authenticated) {
+                window.location.hash = '#/login';
+                return;
+            }
         }
         renderDashboard(app);
     } else {

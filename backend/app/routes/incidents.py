@@ -4,10 +4,12 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, case, func as sa_func
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
 from app.database import get_db
+from app.models import Event, Ticket
 from app.schemas import IncidentOut, IncidentList, IncidentStatsOut, ConfidenceBin
 from app.services import event_service
 from app.services import ticket_service
@@ -28,18 +30,17 @@ async def list_incidents(
 ):
     """List incidents — events joined with their ticket workflow data."""
     events, total = event_service.list_events(
-        db, severity=severity,
+        db,
+        severity=severity,
+        ticket_status=status,
         limit=limit, offset=offset,
         date_from=date_from, date_to=date_to,
+        include_tickets=True,
     )
 
     incidents = []
     for event in events:
         ticket = event.tickets[0] if event.tickets else None
-        if status and ticket and ticket.status != status:
-            continue
-        if status and not ticket:
-            continue
 
         incidents.append(IncidentOut(
             id=event.id,
@@ -134,17 +135,23 @@ async def get_incident_stats(
     _admin: str = Depends(get_current_admin),
 ):
     """Get aggregate incident statistics with confidence distribution."""
-    from sqlalchemy import func as sa_func
-    from app.models import Event, Ticket
-
-    total = db.query(sa_func.count(Event.id)).scalar() or 0
-
-    avg_conf = db.query(sa_func.avg(Event.confidence)).scalar()
+    totals = db.query(
+        sa_func.count(Event.id).label("total"),
+        sa_func.avg(Event.confidence).label("avg_conf"),
+    ).one()
+    total = int(totals.total or 0)
+    avg_conf = totals.avg_conf
     avg_confidence = round(float(avg_conf), 2) if avg_conf else 0.0
 
-    resolved = db.query(sa_func.count(Ticket.id)).filter(Ticket.status == "resolved").scalar() or 0
-    pending = db.query(sa_func.count(Ticket.id)).filter(Ticket.status == "pending").scalar() or 0
-    issued = db.query(sa_func.count(Ticket.id)).filter(Ticket.status == "issued").scalar() or 0
+    ticket_counts = db.query(
+        sa_func.sum(case((Ticket.status == "resolved", 1), else_=0)).label("resolved"),
+        sa_func.sum(case((Ticket.status == "pending", 1), else_=0)).label("pending"),
+        sa_func.sum(case((Ticket.status == "issued", 1), else_=0)).label("issued"),
+    ).one()
+
+    resolved = int(ticket_counts.resolved or 0)
+    pending = int(ticket_counts.pending or 0)
+    issued = int(ticket_counts.issued or 0)
 
     confidence_distribution = _build_confidence_distribution(db)
 
@@ -160,20 +167,31 @@ async def get_incident_stats(
 
 def _build_confidence_distribution(db: Session) -> list[ConfidenceBin]:
     """Build confidence histogram with 10 bins (50-55%, 55-60%, ..., 95-100%)."""
-    from sqlalchemy import func as sa_func
     from app.models import Event
 
-    bins = []
-    for i in range(10):
-        low = 0.50 + i * 0.05
-        high = low + 0.05
-        count = db.query(sa_func.count(Event.id)).filter(
-            Event.confidence >= low,
-            Event.confidence < high,
-        ).scalar() or 0
-        bins.append(ConfidenceBin(
-            label=f"{int(low * 100)}-{int(high * 100)}%",
-            count=count,
-        ))
+    bin_ranges = [(0.50 + i * 0.05, 0.55 + i * 0.05) for i in range(10)]
+    aggregate_columns = [
+        sa_func.sum(
+            case(
+                (
+                    and_(
+                        Event.confidence >= low,
+                        Event.confidence < high,
+                    ),
+                    1,
+                ),
+                else_=0,
+            )
+        ).label(f"bin_{idx}")
+        for idx, (low, high) in enumerate(bin_ranges)
+    ]
 
-    return bins
+    row = db.query(*aggregate_columns).one()
+
+    return [
+        ConfidenceBin(
+            label=f"{int(low * 100)}-{int(high * 100)}%",
+            count=int((getattr(row, f"bin_{idx}") or 0)),
+        )
+        for idx, (low, high) in enumerate(bin_ranges)
+    ]

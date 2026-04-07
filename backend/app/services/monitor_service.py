@@ -23,6 +23,7 @@ from app.services.camera_service import CameraService, CameraInfo, StreamCapture
 from app.services.iowa_camera_service import IowaCameraService
 from app.services import event_service, ticket_service
 from app.routes.settings import get_runtime_settings
+from app.storage import enqueue_event_evidence_upload
 
 logger = logging.getLogger(__name__)
 
@@ -520,6 +521,9 @@ class MonitorService:
                     source="cctv",
                 )
 
+                if event.evidence_path:
+                    enqueue_event_evidence_upload(event.id, event.evidence_path)
+
                 if det.label == "accident":
                     ticket_service.create_ticket_from_event(
                         db,
@@ -683,6 +687,9 @@ class MonitorService:
                     },
                     source="cctv",
                 )
+
+                if event.evidence_path:
+                    enqueue_event_evidence_upload(event.id, event.evidence_path)
 
                 if det.label == "accident":
                     ticket_service.create_ticket_from_event(

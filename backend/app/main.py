@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.database import create_tables, run_migrations
+from app.database import ensure_performance_indexes, verify_connection
 from app.config import get_settings
 from app.detection.detector import AccidentDetector
 from app.detection.processor import VideoProcessor
@@ -31,12 +31,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan — initialize DB and load model on startup."""
     config = get_settings()
 
-    # Create database tables
-    logger.info("Initializing database...")
-    create_tables()
-
-    # Run schema migrations (add new columns to existing tables)
-    run_migrations()
+    # Verify Supabase database connection
+    logger.info("Verifying Supabase database connection...")
+    verify_connection()
+    ensure_performance_indexes()
 
     # Create required directories
     os.makedirs(config.evidence_dir, exist_ok=True)
@@ -102,10 +100,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount evidence directory for serving saved frames
+# Mount evidence directory for serving local evidence files.
+# Aggressive evidence mode writes locally first, then uploads asynchronously.
 config = get_settings()
 os.makedirs(config.evidence_dir, exist_ok=True)
 app.mount("/evidence", StaticFiles(directory=config.evidence_dir), name="evidence")
+logger.info("Mounted local evidence directory")
 
 # Include API routes
 app.include_router(auth.router)

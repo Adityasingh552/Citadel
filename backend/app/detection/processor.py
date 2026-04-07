@@ -53,6 +53,7 @@ class VideoProcessor:
         self.detector = detector
         self.settings = get_settings()
 
+        # Evidence is written locally first for low-latency response paths.
         os.makedirs(self.settings.evidence_dir, exist_ok=True)
 
     def process_video(
@@ -204,11 +205,15 @@ class VideoProcessor:
     ) -> str:
         """Save a frame as a JPEG evidence file with annotated bounding boxes.
 
+        Writes to local evidence storage immediately for low-latency responses.
+        Remote upload to Supabase Storage is performed asynchronously after
+        the corresponding event row is created.
+
         Draws colored bounding boxes and confidence labels on the frame
-        before saving. Accidents are drawn in red, vehicles in yellow.
+        before writing. Accidents are drawn in red.
 
         Returns:
-            Relative path to the saved file.
+            Local evidence filename (relative path).
         """
         annotated = frame.copy()
 
@@ -258,7 +263,12 @@ class VideoProcessor:
                     cv2.LINE_AA,
                 )
 
+        # Generate filename
         filename = f"evidence_{uuid.uuid4().hex[:12]}_f{frame_number}.jpg"
+
         filepath = os.path.join(self.settings.evidence_dir, filename)
-        cv2.imwrite(filepath, annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        ok = cv2.imwrite(filepath, annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ok:
+            raise RuntimeError(f"Failed to write evidence image: {filepath}")
+
         return filename

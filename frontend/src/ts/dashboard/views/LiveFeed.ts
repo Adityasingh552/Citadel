@@ -293,6 +293,10 @@ async function processAllFiles(
     statusText.textContent = `Done — ${unifiedResults.filter(r => r.status === 'processed').length} file(s) processed`;
     renderResultsWithThumbnails(unifiedResults, resultsArea);
 
+    // Invalidate dashboard summary caches so Overview/Incidents reflect
+    // newly created events and tickets on next navigation.
+    api.invalidateViewCaches();
+
     setTimeout(() => hideProgress(progressWrapper, progressFill, progressText), 2000);
   } finally {
     statusText.textContent = `Done — ${unifiedResults.filter(r => r.status === 'processed').length} file(s) processed`;

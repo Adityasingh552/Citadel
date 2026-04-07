@@ -1,48 +1,129 @@
-/** Citadel API client — Fetch wrapper for /api/* endpoints with JWT auth. */
+/** Citadel API client — Fetch wrapper for /api/* endpoints with Supabase auth. */
+
+import { getSupabase } from './supabase.js';
 
 declare const __API_URL__: string;
-
-const TOKEN_KEY = 'citadel_token';
 
 class ApiClient {
     // Use environment-injected URL in production, fallback to relative /api for dev
     private baseUrl = __API_URL__ ? `${__API_URL__}/api` : '/api';
 
-    /** Get the stored JWT token. */
-    getToken(): string | null {
-        return localStorage.getItem(TOKEN_KEY);
+    /** Get the current Supabase access token. */
+    async getToken(): Promise<string | null> {
+        const supabase = getSupabase();
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token ?? localStorage.getItem('citadel_token') ?? null;
     }
 
     /** Check if the user is authenticated. */
-    isAuthenticated(): boolean {
-        return !!this.getToken();
+    async isAuthenticated(): Promise<boolean> {
+        const supabase = getSupabase();
+        
+        // Primary: check Supabase session
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+            console.log('[Auth] isAuthenticated: session found');
+            return true;
+        }
+        
+        // Fallback: check localStorage for token
+        const token = localStorage.getItem('citadel_token');
+        if (token) {
+            console.log('[Auth] isAuthenticated: localStorage token found');
+            return true;
+        }
+        
+        console.log('[Auth] isAuthenticated: no auth found');
+        return false;
     }
 
-    /** Log in and store the JWT token. */
-    async login(username: string, password: string): Promise<void> {
+    /** Log in via backend auth endpoint and set up Supabase session. */
+    async login(email: string, password: string): Promise<void> {
         const res = await fetch(this.baseUrl + '/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify({ email, password }),
         });
         if (!res.ok) {
             const data = await res.json().catch(() => null);
             throw new Error(data?.detail || 'Invalid credentials');
         }
         const data = await res.json();
-        localStorage.setItem(TOKEN_KEY, data.access_token);
+        
+        console.log('[Auth] Login response received:', {
+            hasAccessToken: !!data.access_token,
+            hasRefreshToken: !!data.refresh_token,
+            userId: data.user_id,
+        });
+        
+        // Establish Supabase session with both tokens
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.setSession({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+        });
+        
+        if (error) {
+            console.error('[Auth] setSession error:', error);
+            throw new Error('Failed to establish session: ' + error.message);
+        }
+        
+        // Verify session was established
+        const { data: sessionData } = await supabase.auth.getSession();
+        console.log('[Auth] Session after setSession:', {
+            hasSession: !!sessionData.session,
+            hasAccessToken: !!sessionData.session?.access_token,
+        });
+        
+        // Store the access token for backward compatibility
+        localStorage.setItem('citadel_token', data.access_token);
     }
 
-    /** Log out — clear token and redirect to login. */
-    logout(): void {
-        localStorage.removeItem(TOKEN_KEY);
+    /** Log out — clear session and redirect to login. */
+    async logout(): Promise<void> {
+        try {
+            const supabase = getSupabase();
+            await supabase.auth.signOut();
+        } catch {
+            // Ignore sign-out errors
+        }
+        localStorage.removeItem('citadel_token');
         window.location.hash = '#/login';
     }
 
+    invalidateViewCaches(): void {
+        const prefixes = [
+            `${this.baseUrl}/stats`,
+            `${this.baseUrl}/incidents`,
+            `${this.baseUrl}/alerts`,
+            `${this.baseUrl}/cameras`,
+            `${this.baseUrl}/settings`,
+        ];
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (!key || !key.startsWith('api_cache_')) continue;
+            const cacheUrl = key.slice('api_cache_'.length);
+            if (prefixes.some(p => cacheUrl.startsWith(p))) {
+                localStorage.removeItem(key);
+            }
+        }
+
+        const viewCacheKeys = [
+            'citadel:view:overview:v1',
+            'citadel:view:incidents:v1',
+            'citadel:view:cameras:monitor:v1',
+            'citadel:view:monitor:status:v1',
+            'citadel:view:settings:v1',
+        ];
+        for (const key of viewCacheKeys) {
+            localStorage.removeItem(key);
+        }
+    }
+
     /** Build headers with Authorization if token exists. */
-    private authHeaders(extra?: Record<string, string>): Record<string, string> {
+    private async authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
         const headers: Record<string, string> = { ...extra };
-        const token = this.getToken();
+        const token = localStorage.getItem('citadel_token');
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
@@ -52,7 +133,7 @@ class ApiClient {
     /** Handle 401 responses — clear token and redirect. */
     private handleUnauthorized(res: Response): void {
         if (res.status === 401) {
-            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem('citadel_token');
             window.location.hash = '#/login';
         }
     }
@@ -84,8 +165,9 @@ class ApiClient {
             }
         }
 
+        const headers = await this.authHeaders();
         const res = await fetch(url.toString(), {
-            headers: this.authHeaders(),
+            headers,
         });
         if (!res.ok) {
             this.handleUnauthorized(res);
@@ -114,9 +196,10 @@ class ApiClient {
         if (params) {
             Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
         }
+        const headers = await this.authHeaders(body ? { 'Content-Type': 'application/json' } : undefined);
         const res = await fetch(url.toString(), {
             method: 'POST',
-            headers: this.authHeaders(body ? { 'Content-Type': 'application/json' } : undefined),
+            headers,
             body: body ? JSON.stringify(body) : undefined,
         });
         if (!res.ok) {
@@ -128,9 +211,10 @@ class ApiClient {
     }
 
     async patch<T>(path: string, body: unknown): Promise<T> {
+        const headers = await this.authHeaders({ 'Content-Type': 'application/json' });
         const res = await fetch(this.baseUrl + path, {
             method: 'PATCH',
-            headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+            headers,
             body: JSON.stringify(body),
         });
         if (!res.ok) {
@@ -141,9 +225,10 @@ class ApiClient {
     }
 
     async put<T>(path: string, body: unknown): Promise<T> {
+        const headers = await this.authHeaders({ 'Content-Type': 'application/json' });
         const res = await fetch(this.baseUrl + path, {
             method: 'PUT',
-            headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+            headers,
             body: JSON.stringify(body),
         });
         if (!res.ok) {
@@ -160,9 +245,10 @@ class ApiClient {
         if (params) {
             Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
         }
+        const headers = await this.authHeaders();
         const res = await fetch(url.toString(), {
             method: 'POST',
-            headers: this.authHeaders(),
+            headers,
             body: formData,
         });
         if (!res.ok) {
@@ -175,9 +261,10 @@ class ApiClient {
     async uploadMultiple<T>(path: string, files: File[]): Promise<T> {
         const formData = new FormData();
         files.forEach(f => formData.append('files', f));
+        const headers = await this.authHeaders();
         const res = await fetch(this.baseUrl + path, {
             method: 'POST',
-            headers: this.authHeaders(),
+            headers,
             body: formData,
         });
         if (!res.ok) {
@@ -188,9 +275,10 @@ class ApiClient {
     }
 
     async delete<T>(path: string): Promise<T> {
+        const headers = await this.authHeaders();
         const res = await fetch(this.baseUrl + path, {
             method: 'DELETE',
-            headers: this.authHeaders(),
+            headers,
         });
         if (!res.ok) {
             this.handleUnauthorized(res);
@@ -247,8 +335,8 @@ class ApiClient {
     }
 
     /** Build auth headers object for use in <img> fetch or manual requests. */
-    getAuthHeaders(): Record<string, string> {
-        return this.authHeaders();
+    async getAuthHeaders(): Promise<Record<string, string>> {
+        return await this.authHeaders();
     }
 }
 

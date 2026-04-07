@@ -14,8 +14,42 @@ let detailSnapshotTimer: number | null = null;
 let detailMap: any = null;
 let currentView: 'list' | 'detail' | 'inactive' = 'inactive';
 let cachedMonitors: MonitorStatusResponse | null = null;
+let monitorsCacheAt = 0;
+const MONITOR_REVALIDATE_MS = 20000;
+const MONITOR_MAX_STALE_MS = 10 * 60 * 1000;
+const MONITOR_STORAGE_KEY = 'citadel:view:cameras:monitor:v1';
 let snapshotLoading = false;
 let mainContainer: HTMLElement | null = null;
+
+let monitorRefreshPromise: Promise<void> | null = null;
+
+function loadMonitorsCache(): void {
+    if (cachedMonitors) return;
+    try {
+        const raw = localStorage.getItem(MONITOR_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { at: number; data: MonitorStatusResponse };
+        if (!parsed || typeof parsed.at !== 'number' || !parsed.data) return;
+        if ((Date.now() - parsed.at) > MONITOR_MAX_STALE_MS) {
+            localStorage.removeItem(MONITOR_STORAGE_KEY);
+            return;
+        }
+        monitorsCacheAt = parsed.at;
+        cachedMonitors = parsed.data;
+    } catch {
+        // Ignore invalid cache data.
+    }
+}
+
+function persistMonitorsCache(data: MonitorStatusResponse): void {
+    cachedMonitors = data;
+    monitorsCacheAt = Date.now();
+    try {
+        localStorage.setItem(MONITOR_STORAGE_KEY, JSON.stringify({ at: monitorsCacheAt, data }));
+    } catch {
+        // Ignore storage quota issues.
+    }
+}
 
 // Video player state for detail view
 let detailVideoPlayer: VideoPlayer | null = null;
@@ -60,6 +94,7 @@ function renderList(container: HTMLElement): void {
     cleanupTimers();
     destroyDetailMap();
     currentView = 'list';
+    loadMonitorsCache();
 
     container.innerHTML = `
         <div class="cameras-layout">
@@ -88,21 +123,45 @@ function renderList(container: HTMLElement): void {
     });
     document.getElementById('cameras-stop-all-btn')?.addEventListener('click', stopAllMonitors);
 
-    loadMonitors();
+    if (cachedMonitors) {
+        renderMonitorList(cachedMonitors);
+        if ((Date.now() - monitorsCacheAt) >= MONITOR_REVALIDATE_MS) {
+            void loadMonitors(true);
+        }
+    } else {
+        void loadMonitors(true);
+    }
 }
 
 async function loadMonitors(force: boolean = false): Promise<void> {
     // Don't refresh the list if we're in detail view
     if (currentView !== 'list') return;
+
+    if (monitorRefreshPromise) {
+        return monitorRefreshPromise;
+    }
+
+    monitorRefreshPromise = (async () => {
     try {
-        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: 4000, force });
-        cachedMonitors = data;
+        const data = await api.get<MonitorStatusResponse>('/cameras/monitor/status', undefined, { ttlMs: MONITOR_REVALIDATE_MS, force });
+        persistMonitorsCache(data);
         renderMonitorList(data);
         
         // Schedule next poll based on whether there are active monitors
         scheduleNextListPoll(data.active_count > 0);
     } catch (err) {
         console.error('Failed to load monitors:', err);
+        if (cachedMonitors) {
+            renderMonitorList(cachedMonitors);
+            scheduleNextListPoll(cachedMonitors.active_count > 0);
+        }
+    }
+    })();
+
+    try {
+        await monitorRefreshPromise;
+    } finally {
+        monitorRefreshPromise = null;
     }
 }
 
@@ -112,6 +171,11 @@ function scheduleNextListPoll(hasActive: boolean): void {
         clearTimeout(refreshTimer);
         refreshTimer = null;
     }
+    if (document.hidden) {
+        refreshTimer = window.setTimeout(() => loadMonitors(), 30000);
+        return;
+    }
+
     const interval = hasActive ? 5000 : 30000;
     refreshTimer = window.setTimeout(() => loadMonitors(), interval);
 }
@@ -434,7 +498,8 @@ async function openDetail(
 
     // Auto-refresh snapshot every 30s
     detailSnapshotTimer = window.setInterval(() => {
-        loadDetailSnapshot(cameraId);
+        if (document.hidden) return;
+        void loadDetailSnapshot(cameraId);
     }, 30000);
 }
 
@@ -552,7 +617,7 @@ async function loadDetailSnapshot(cameraId: string): Promise<void> {
 
     try {
         const res = await fetch(api.getSnapshotProxyUrl(cameraId), {
-            headers: api.getAuthHeaders(),
+            headers: await api.getAuthHeaders(),
         });
         if (!res.ok) throw new Error('Failed to fetch snapshot');
 
@@ -576,6 +641,10 @@ async function loadDetailSnapshot(cameraId: string): Promise<void> {
 
 async function refreshDetailStatus(cameraId: string, force: boolean = false): Promise<void> {
     if (currentView !== 'detail') return;
+    if (document.hidden && !force) {
+        scheduleNextDetailPoll(cameraId, false, true);
+        return;
+    }
     try {
         const data = await api.get<{ status: MonitorStatus }>(`/cameras/monitor/${cameraId}/status`);
         const status = data.status;
@@ -706,7 +775,7 @@ function renderDetailDetections(m: MonitorStatus): void {
                 </div>
             </div>
             ${d.evidence_path ? `
-                <img class="camdetail__det-thumb" src="/evidence/${d.evidence_path}" alt="evidence" />
+                <img class="camdetail__det-thumb" src="${resolveEvidenceSrc(d.evidence_path)}" alt="evidence" />
             ` : ''}
         </div>
     `).join('');
@@ -903,4 +972,9 @@ function getTimeSince(isoDate: string): string {
     const h = Math.floor(diff / 3600);
     const m = Math.floor((diff % 3600) / 60);
     return `${h}h ${m}m`;
+}
+
+function resolveEvidenceSrc(path: string): string {
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return `/evidence/${path}`;
 }

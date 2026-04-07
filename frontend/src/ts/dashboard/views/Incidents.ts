@@ -8,6 +8,55 @@ import { Toast } from '../../utils/toast.js';
 let currentTab = '';
 let allIncidents: Incident[] = [];
 
+type IncidentsCacheEntry = {
+  at: number;
+  incidents: Incident[];
+  stats: IncidentStats | null;
+};
+
+const INCIDENTS_REVALIDATE_MS = 20000;
+const INCIDENTS_MAX_STALE_MS = 10 * 60 * 1000;
+const INCIDENTS_STORAGE_KEY = 'citadel:view:incidents:v1';
+
+let _incidentsCache: IncidentsCacheEntry | null = loadIncidentsCache();
+let _incidentsRefreshPromise: Promise<void> | null = null;
+
+function loadIncidentsCache(): IncidentsCacheEntry | null {
+  try {
+    const raw = localStorage.getItem(INCIDENTS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as IncidentsCacheEntry;
+    if (!parsed || typeof parsed.at !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistIncidentsCache(entry: IncidentsCacheEntry): void {
+  _incidentsCache = entry;
+  try {
+    localStorage.setItem(INCIDENTS_STORAGE_KEY, JSON.stringify(entry));
+  } catch {
+    // Ignore storage quota issues.
+  }
+}
+
+function getIncidentsCache(): IncidentsCacheEntry | null {
+  if (!_incidentsCache) {
+    _incidentsCache = loadIncidentsCache();
+  }
+  if (!_incidentsCache) return null;
+
+  if ((Date.now() - _incidentsCache.at) > INCIDENTS_MAX_STALE_MS) {
+    _incidentsCache = null;
+    localStorage.removeItem(INCIDENTS_STORAGE_KEY);
+    return null;
+  }
+
+  return _incidentsCache;
+}
+
 export async function renderIncidents(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="incidents-summary" id="incidents-summary">
@@ -55,19 +104,48 @@ export async function renderIncidents(container: HTMLElement): Promise<void> {
     if ((e.target as HTMLElement).id === 'incident-modal') closeModal();
   });
 
-  await loadIncidents();
+  const cached = getIncidentsCache();
+  if (cached) {
+    allIncidents = cached.incidents;
+    renderSummary(cached.stats);
+    renderTable(filterIncidents());
+    if ((Date.now() - cached.at) >= INCIDENTS_REVALIDATE_MS) {
+      void loadIncidents(true);
+    }
+    return;
+  }
+
+  await loadIncidents(true);
 }
 
-async function loadIncidents(): Promise<void> {
+async function loadIncidents(force: boolean = false): Promise<void> {
+  if (_incidentsRefreshPromise) {
+    return _incidentsRefreshPromise;
+  }
+
+  _incidentsRefreshPromise = (async () => {
   try {
     const [data, stats] = await Promise.all([
-      api.get<IncidentListResponse>('/incidents', { limit: '200' }),
-      api.get<IncidentStats>('/incidents/stats/overview').catch(() => null),
+      api.get<IncidentListResponse>('/incidents', { limit: '200' }, { ttlMs: INCIDENTS_REVALIDATE_MS, force }),
+      api.get<IncidentStats>('/incidents/stats/overview', undefined, { ttlMs: INCIDENTS_REVALIDATE_MS, force }).catch(() => null),
     ]);
     allIncidents = data.incidents;
+    persistIncidentsCache({
+      at: Date.now(),
+      incidents: data.incidents,
+      stats,
+    });
     renderSummary(stats);
     renderTable(filterIncidents());
   } catch {
+    const stale = getIncidentsCache();
+    if (stale) {
+      allIncidents = stale.incidents;
+      renderSummary(stale.stats);
+      renderTable(filterIncidents());
+      return;
+    }
+
     const el = document.getElementById('incidents-table-card');
     if (el) el.innerHTML = `
       <div class="empty-state">
@@ -76,6 +154,13 @@ async function loadIncidents(): Promise<void> {
         <div class="empty-state__desc">Incidents appear when accidents are detected</div>
       </div>
     `;
+  }
+  })();
+
+  try {
+    await _incidentsRefreshPromise;
+  } finally {
+    _incidentsRefreshPromise = null;
   }
 }
 
@@ -242,8 +327,8 @@ function showIncidentDetail(incident: Incident): void {
 
       ${incident.evidence_path
         ? `<div style="border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border);">
-             <img src="/evidence/${incident.evidence_path}" alt="Evidence"
-               style="width: 100%; max-height: 240px; object-fit: cover;" />
+             <img src="${resolveEvidenceSrc(incident.evidence_path)}" alt="Evidence"
+                style="width: 100%; max-height: 240px; object-fit: cover;" />
            </div>`
         : ''
       }
@@ -304,6 +389,9 @@ function showIncidentDetail(incident: Incident): void {
       try {
         await api.patch<Incident>(`/incidents/${incident.id}/status?status=${next}`, {});
         allIncidents = allIncidents.map(i => i.id === incident.id ? { ...i, status: next as Incident['status'] } : i);
+        if (_incidentsCache) {
+          _incidentsCache.incidents = allIncidents;
+        }
         renderSummary(null);
         renderTable(filterIncidents());
         closeModal();
@@ -320,4 +408,9 @@ function showIncidentDetail(incident: Incident): void {
 function closeModal(): void {
   const modal = document.getElementById('incident-modal');
   if (modal) modal.style.display = 'none';
+}
+
+function resolveEvidenceSrc(path: string): string {
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `/evidence/${path}`;
 }

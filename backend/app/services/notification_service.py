@@ -70,6 +70,30 @@ def _get_evidence_base_url() -> str:
     return "/evidence"
 
 
+def _resolve_evidence_url(evidence_path: str, base_url: str) -> str:
+    """Resolve evidence path to a full URL, supporting remote URLs."""
+    if evidence_path.startswith("http://") or evidence_path.startswith("https://"):
+        return evidence_path
+    return f"{base_url}{_get_evidence_base_url()}/{evidence_path}"
+
+
+def _resolve_local_evidence_path(evidence_path: str) -> Path | None:
+    """Resolve a local evidence filename to filesystem path.
+
+    Returns None for remote URLs or missing files.
+    """
+    if evidence_path.startswith("http://") or evidence_path.startswith("https://"):
+        return None
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    full_path = Path(settings.evidence_dir) / evidence_path
+    if not full_path.exists():
+        return None
+    return full_path
+
+
 # ── Rich payload builder ──────────────────────────────────────────────────
 
 def _build_payload(event_details: dict) -> dict:
@@ -106,7 +130,7 @@ def _build_payload(event_details: dict) -> dict:
     }
 
     if evidence_path:
-        payload["evidence_image"] = f"{base_url}{_get_evidence_base_url()}/{evidence_path}"
+        payload["evidence_image"] = _resolve_evidence_url(evidence_path, base_url)
         logger.info("Built evidence URL: %s", payload["evidence_image"])
 
     if source == "cctv" and camera_id:
@@ -256,10 +280,8 @@ def _send_email(config: dict, event_details: dict, payload: dict) -> dict:
         # Attach evidence image if available
         evidence_path = event_details.get("evidence_path")
         if evidence_path:
-            from app.config import get_settings
-            settings = get_settings()
-            full_path = Path(settings.evidence_dir) / evidence_path
-            if full_path.exists():
+            full_path = _resolve_local_evidence_path(evidence_path)
+            if full_path is not None:
                 with open(full_path, "rb") as f:
                     img_data = f.read()
                 img_mime = MIMEImage(img_data, name=full_path.name)
@@ -306,10 +328,8 @@ def _send_webhook(config: dict, event_details: dict, payload: dict) -> dict:
         webhook_payload = {**payload}
         evidence_path = event_details.get("evidence_path")
         if evidence_path:
-            from app.config import get_settings
-            settings = get_settings()
-            full_path = Path(settings.evidence_dir) / evidence_path
-            if full_path.exists() and full_path.stat().st_size < 5 * 1024 * 1024:  # < 5 MB
+            full_path = _resolve_local_evidence_path(evidence_path)
+            if full_path is not None and full_path.stat().st_size < 5 * 1024 * 1024:  # < 5 MB
                 with open(full_path, "rb") as f:
                     webhook_payload["evidence_image_base64"] = base64.b64encode(f.read()).decode()
                     webhook_payload["evidence_image_filename"] = full_path.name
@@ -388,9 +408,8 @@ def _send_telegram(config: dict, event_details: dict, payload: dict) -> dict:
         with httpx.Client(timeout=30.0) as client:
             try:
                 if evidence_path:
-                    from pathlib import Path
-                    full_path = Path(settings.evidence_dir) / evidence_path
-                    if full_path.exists():
+                    full_path = _resolve_local_evidence_path(evidence_path)
+                    if full_path is not None:
                         resp = client.post(
                             send_photo_url,
                             data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},

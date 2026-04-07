@@ -9,7 +9,7 @@
 - **Automated Ticketing** — Auto-generate violation tickets with an `issued → pending → resolved` workflow
 - **Multi-Channel Alerts** — Automated notifications for severe accidents via Twilio (voice calls), Email, and Webhooks with configurable cooldowns
 - **Interactive Map** — Leaflet-based map showing camera locations across all California districts
-- **JWT Authentication** — Admin login with bcrypt + JWT
+- **Supabase Auth** — Email/password authentication with session management
 - **Dashboard** — Live monitoring, real-time activity feed, evidence gallery, and comprehensive statistics
 - **Runtime Settings** — Adjust AI confidence thresholds and alert toggles on the fly
 
@@ -20,9 +20,9 @@
 | **Frontend** | TypeScript, Vite, Vanilla CSS, Leaflet    |
 | **Backend**  | Python 3.10+, FastAPI, Uvicorn            |
 | **AI/ML**    | PyTorch (CPU), DETR, Timm, Transformers   |
-| **Database** | SQLite + SQLAlchemy                       |
+| **Database** | Supabase PostgreSQL + SQLAlchemy           |
 | **Vision**   | OpenCV, Pillow                            |
-| **Auth**     | JWT (python-jose), bcrypt                 |
+| **Auth**     | Supabase Auth (email/password)            |
 | **Cameras**  | Caltrans CCTV CSV feeds, 3-tier caching   |
 
 ## Quick Start
@@ -37,10 +37,12 @@ git clone https://github.com/Adityasingh552/Citadel.git && cd Citadel
 python -m venv venv && source venv/bin/activate
 pip install -r backend/requirements.txt
 cp backend/.env.example backend/.env
-# Edit backend/.env — set ADMIN_USERNAME, ADMIN_PASSWORD, JWT_SECRET
+# Edit backend/.env — set DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, etc.
 
 # Frontend
 cd frontend && npm install && cd ..
+cp frontend/.env.example frontend/.env
+# Edit frontend/.env — set VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
 ```
 
 **Run** (two terminals):
@@ -73,16 +75,16 @@ Environment variables in `backend/.env`:
 
 | Variable               | Default                                    | Description                  |
 |------------------------|--------------------------------------------|------------------------------|
-| `DATABASE_URL`         | `sqlite:///./citadel.db`                   | Database connection string   |
+| `DATABASE_URL`         | *(required)*                               | Supabase Postgres connection |
+| `SUPABASE_URL`         | *(required)*                               | Supabase project URL         |
+| `SUPABASE_ANON_KEY`    | *(required)*                               | Supabase anon/public key     |
+| `SUPABASE_SERVICE_KEY` | *(required)*                               | Supabase service role key    |
+| `SUPABASE_JWT_SECRET`  | *(required)*                               | JWT signing secret           |
 | `MODEL_NAME`           | `gopesh353/traffic-accident-detection-detr` | Detection model identifier  |
 | `CONFIDENCE_THRESHOLD` | `0.7`                                      | Min detection confidence     |
 | `EVIDENCE_DIR`         | `./evidence`                               | Saved evidence directory     |
 | `UPLOADS_DIR`          | `./uploads`                                | Uploaded files directory     |
 | `DATA_DIR`             | `./data`                                   | Local cache for camera CSV data |
-| `ADMIN_USERNAME`       | *(required)*                               | Admin login username         |
-| `ADMIN_PASSWORD`       | *(required)*                               | Admin login password         |
-| `JWT_SECRET`           | *(required)*                               | Secret key for JWT signing   |
-| `JWT_EXPIRY_HOURS`     | `24`                                       | Token expiration (hours)     |
 
 Runtime detection settings (confidence thresholds, alert toggles, etc.) can be changed live via the Settings API or dashboard — persisted in `backend/runtime_settings.json`.
 

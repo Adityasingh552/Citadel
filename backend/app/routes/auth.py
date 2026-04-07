@@ -1,58 +1,55 @@
-"""Auth routes — admin login endpoint."""
+"""Auth routes — Supabase session exchange endpoints."""
 
 import logging
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from app.config import get_settings
-from app.auth import verify_password, create_access_token, hash_password
+from app.auth import get_supabase_admin_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-# Hash the admin password once at module level for fast comparison.
-# We re-hash on every import so env changes take effect on restart.
-_admin_hash: str | None = None
-
-
-def _get_admin_hash() -> str:
-    """Lazy-init the bcrypt hash of the configured admin password."""
-    global _admin_hash
-    if _admin_hash is None:
-        settings = get_settings()
-        _admin_hash = hash_password(settings.admin_password)
-    return _admin_hash
-
-
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
 
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+    user_id: str
+    expires_in: int
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest):
-    """Authenticate with admin credentials and receive a JWT."""
-    settings = get_settings()
+    """Authenticate with Supabase and return the session tokens."""
+    supabase = get_supabase_admin_client()
 
-    if body.username != settings.admin_username:
+    try:
+        response = supabase.auth.sign_in_with_password({
+            "email": body.email,
+            "password": body.password,
+        })
+    except Exception as e:
+        logger.warning("Login failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
 
-    if not verify_password(body.password, _get_admin_hash()):
+    if not response.session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
 
-    token = create_access_token(data={"sub": settings.admin_username})
-    logger.info("Admin login successful")
-    return TokenResponse(access_token=token)
+    logger.info("Admin login successful: %s", response.user.email)
+    return TokenResponse(
+        access_token=response.session.access_token,
+        refresh_token=response.session.refresh_token,
+        user_id=response.user.id,
+        expires_in=response.session.expires_in,
+    )

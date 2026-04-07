@@ -56,7 +56,7 @@ export class VideoPlayer {
                 xhrSetup: (xhr: XMLHttpRequest) => {
                     // Avoid auth headers on cross-origin streams (can trigger CORS preflight failures).
                     if (!isCrossOrigin) {
-                        const token = api.getToken();
+                        const token = localStorage.getItem('citadel_token');
                         if (token) {
                             xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                         }

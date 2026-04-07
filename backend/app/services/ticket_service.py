@@ -16,6 +16,7 @@ def create_ticket_from_event(
     event: Event,
     vehicle_description: Optional[str] = None,
     location_info: Optional[str] = None,
+    commit: bool = True,
 ) -> Ticket:
     """Auto-generate a violation ticket from a detected event."""
     # Build vehicle description from detection metadata
@@ -25,7 +26,7 @@ def create_ticket_from_event(
         location_info = _build_location_info(event)
 
     ticket = Ticket(
-        event_id=event.id,
+        event=event,
         violation_type=event.event_type,
         vehicle_description=vehicle_description,
         location_info=location_info,
@@ -33,9 +34,16 @@ def create_ticket_from_event(
         status="issued",
     )
     db.add(ticket)
-    db.commit()
-    db.refresh(ticket)
-    logger.info("Created ticket: %s", ticket)
+
+    if commit:
+        db.commit()
+        db.refresh(ticket)
+
+    logger.info(
+        "Created ticket for event %s (status=%s)",
+        (event.id[:8] if event.id else "pending"),
+        ticket.status,
+    )
     return ticket
 
 

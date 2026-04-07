@@ -1,4 +1,4 @@
-/** Citadel — Login page renderer. */
+/** Citadel — Login page renderer with Supabase auth. */
 
 import { api } from '../api.js';
 
@@ -17,14 +17,14 @@ export function renderLogin(container: HTMLElement): void {
 
         <form class="login-form" id="login-form">
           <div class="login-field">
-            <label class="login-field__label" for="login-username">Email Address</label>
+            <label class="login-field__label" for="login-email">Email Address</label>
             <input
               class="login-field__input"
-              type="text"
-              id="login-username"
-              name="username"
+              type="email"
+              id="login-email"
+              name="email"
               placeholder="operator@citadel.ai"
-              autocomplete="username"
+              autocomplete="email"
               required
             />
           </div>
@@ -69,10 +69,10 @@ export function renderLogin(container: HTMLElement): void {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const username = (document.getElementById('login-username') as HTMLInputElement).value.trim();
+        const email = (document.getElementById('login-email') as HTMLInputElement).value.trim();
         const password = (document.getElementById('login-password') as HTMLInputElement).value;
 
-        if (!username || !password) return;
+        if (!email || !password) return;
 
         // Clear previous error
         errorEl.classList.remove('login-error--visible');
@@ -83,7 +83,9 @@ export function renderLogin(container: HTMLElement): void {
         submitBtn.textContent = 'Signing in...';
 
         try {
-            await api.login(username, password);
+            await api.login(email, password);
+            // Small delay to ensure session is fully established
+            await new Promise(resolve => setTimeout(resolve, 100));
             window.location.hash = '#/dashboard';
         } catch (err) {
             errorEl.textContent = err instanceof Error ? err.message : 'Login failed';

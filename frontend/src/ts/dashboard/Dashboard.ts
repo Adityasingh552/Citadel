@@ -8,6 +8,7 @@ import { renderLiveFeed } from './views/LiveFeed.js';
 import { renderMonitor, destroyMonitor } from './views/Monitor.js';
 import { renderCameras, destroyCameras } from './views/Cameras.js';
 import { renderSettings } from './views/Settings.js';
+import { cancelDashboardPrefetch, scheduleDashboardPrefetch } from './viewPrefetch.js';
 
 /* ── SVG Icons (minimal line-style, 18×18) ── */
 const ICONS: Record<string, string> = {
@@ -83,6 +84,8 @@ function renderViewContent(view: DashboardView, container: HTMLElement): void {
   destroyMonitor();
   destroyCameras();
 
+  scheduleDashboardPrefetch(view);
+
   switch (view) {
     case 'overview':   renderOverview(container);   break;
     case 'incidents':  renderIncidents(container);  break;
@@ -96,6 +99,7 @@ function renderViewContent(view: DashboardView, container: HTMLElement): void {
 export function cleanupDashboard(): void {
   destroyMonitor();
   destroyCameras();
+  cancelDashboardPrefetch();
 }
 
 /* ── Build sidebar nav HTML ── */

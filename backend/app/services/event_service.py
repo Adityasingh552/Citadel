@@ -4,11 +4,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, case, func
+from sqlalchemy.orm import Session, selectinload
 
-from app.config import get_settings
-from app.models import Event
+from app.models import Event, Ticket
 from app.schemas import SeverityBreakdown, TimelinePoint
 
 logger = logging.getLogger(__name__)
@@ -28,6 +27,8 @@ def create_event(
     frame_number: Optional[int] = None,
     metadata: Optional[dict] = None,
     source: str = "manual",  # "manual" (upload) | "cctv" (live monitor)
+    commit: bool = True,
+    dispatch_notifications: bool = True,
 ) -> Event:
     """Create a new event in the database.
 
@@ -47,59 +48,82 @@ def create_event(
         metadata_=metadata,
     )
     db.add(event)
-    db.commit()
-    db.refresh(event)
+    db.flush()
+
+    if commit:
+        db.commit()
+        db.refresh(event)
+
     logger.info("Created event: %s", event)
 
-    # ── Dispatch all configured notifications (Twilio, Email, Webhook) ──
-    if event_type == "accident" and severity in _CALL_SEVERITIES:
-        from app.services.notification_service import dispatch_alerts  # lazy import
-        # Give dispatcher rich details so it can build complete payloads
-        details_for_alerts = {
-            "event_id": event.id,
-            "event_type": event_type,
-            "severity": severity,
-            "confidence": confidence,
-            "timestamp": event.timestamp.isoformat(),
-            "bbox_data": bbox_data,
-            "evidence_path": evidence_path,
-            "source_video": source_video,
-            "source": source,
-            "camera_id": (metadata or {}).get("camera_id"),
-            "camera_name": (metadata or {}).get("camera_name", ""),
-            "camera_stream_url": (metadata or {}).get("camera_stream_url", ""),
-            "camera_snapshot_url": (metadata or {}).get("camera_snapshot_url", ""),
-            "camera_lat": (metadata or {}).get("camera_lat"),
-            "camera_lng": (metadata or {}).get("camera_lng"),
-        }
-        dispatch_alerts(details_for_alerts, db)
-    # ─────────────────────────────────────────────────────────────────
+    if dispatch_notifications:
+        dispatch_event_notifications(db, event, source=source)
 
     return event
+
+
+def _build_alert_details(event: Event, source: str = "manual") -> dict:
+    metadata = event.metadata_ or {}
+    return {
+        "event_id": event.id,
+        "event_type": event.event_type,
+        "severity": event.severity,
+        "confidence": event.confidence,
+        "timestamp": event.timestamp.isoformat(),
+        "bbox_data": event.bbox_data,
+        "evidence_path": event.evidence_path,
+        "source_video": event.source_video,
+        "source": source,
+        "camera_id": metadata.get("camera_id"),
+        "camera_name": metadata.get("camera_name", ""),
+        "camera_stream_url": metadata.get("camera_stream_url", ""),
+        "camera_snapshot_url": metadata.get("camera_snapshot_url", ""),
+        "camera_lat": metadata.get("camera_lat"),
+        "camera_lng": metadata.get("camera_lng"),
+    }
+
+
+def dispatch_event_notifications(db: Session, event: Event, source: str = "manual") -> None:
+    """Dispatch configured notifications for an event if it is alert-worthy."""
+    if event.event_type != "accident" or event.severity not in _CALL_SEVERITIES:
+        return
+
+    from app.services.notification_service import dispatch_alerts  # lazy import
+
+    dispatch_alerts(_build_alert_details(event, source=source), db)
 
 
 def list_events(
     db: Session,
     event_type: Optional[str] = None,
     severity: Optional[str] = None,
+    ticket_status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
+    include_tickets: bool = False,
 ) -> tuple[list[Event], int]:
     """List events with optional filtering. Returns (events, total_count)."""
     query = db.query(Event)
+
+    if include_tickets:
+        query = query.options(selectinload(Event.tickets))
 
     if event_type:
         query = query.filter(Event.event_type == event_type)
     if severity:
         query = query.filter(Event.severity == severity)
+    if ticket_status:
+        query = query.join(Ticket, Ticket.event_id == Event.id).filter(Ticket.status == ticket_status)
+        query = query.distinct()
     if date_from:
         query = query.filter(Event.timestamp >= date_from)
     if date_to:
         query = query.filter(Event.timestamp <= date_to)
 
-    total = query.count()
+    id_query = query.order_by(None).with_entities(Event.id)
+    total = db.query(func.count()).select_from(id_query.subquery()).scalar() or 0
     events = query.order_by(Event.timestamp.desc()).offset(offset).limit(limit).all()
     return events, total
 
@@ -111,33 +135,59 @@ def get_event(db: Session, event_id: str) -> Optional[Event]:
 
 def get_stats(db: Session) -> dict:
     """Get aggregate statistics for the dashboard."""
-    total_events = db.query(func.count(Event.id)).scalar() or 0
-    total_accidents = db.query(func.count(Event.id)).filter(Event.event_type == "accident").scalar() or 0
+    totals = db.query(
+        func.count(Event.id).label("total_events"),
+        func.sum(case((Event.event_type == "accident", 1), else_=0)).label("total_accidents"),
+        func.sum(case((and_(Event.event_type == "accident", Event.severity == "high"), 1), else_=0)).label("severity_high"),
+        func.sum(case((and_(Event.event_type == "accident", Event.severity == "medium"), 1), else_=0)).label("severity_medium"),
+        func.sum(case((and_(Event.event_type == "accident", Event.severity == "low"), 1), else_=0)).label("severity_low"),
+    ).one()
 
-    # Severity breakdown (accidents only)
-    severity_high = db.query(func.count(Event.id)).filter(
-        Event.event_type == "accident", Event.severity == "high"
-    ).scalar() or 0
-    severity_medium = db.query(func.count(Event.id)).filter(
-        Event.event_type == "accident", Event.severity == "medium"
-    ).scalar() or 0
-    severity_low = db.query(func.count(Event.id)).filter(
-        Event.event_type == "accident", Event.severity == "low"
-    ).scalar() or 0
+    total_events = int(totals.total_events or 0)
+    total_accidents = int(totals.total_accidents or 0)
+    severity_high = int(totals.severity_high or 0)
+    severity_medium = int(totals.severity_medium or 0)
+    severity_low = int(totals.severity_low or 0)
 
-    # 24h timeline (events per hour)
+    # 24h timeline (single grouped query)
     now = datetime.now(timezone.utc)
+    window_start = now - timedelta(hours=23)
+    timeline_counts: dict[str, int] = {}
+
+    dialect_name = ""
+    if db.bind is not None and db.bind.dialect is not None:
+        dialect_name = db.bind.dialect.name
+
+    if dialect_name == "postgresql":
+        hour_bucket = func.date_trunc("hour", Event.timestamp)
+        rows = (
+            db.query(hour_bucket.label("hour_bucket"), func.count(Event.id))
+            .filter(Event.timestamp >= window_start)
+            .group_by(hour_bucket)
+            .all()
+        )
+        for bucket, count in rows:
+            timeline_counts[bucket.strftime("%H:00")] = int(count or 0)
+    else:
+        # SQLite / fallback path for test environments.
+        hour_bucket = func.strftime("%Y-%m-%d %H:00", Event.timestamp)
+        rows = (
+            db.query(hour_bucket.label("hour_bucket"), func.count(Event.id))
+            .filter(Event.timestamp >= window_start)
+            .group_by(hour_bucket)
+            .all()
+        )
+        for bucket, count in rows:
+            if bucket:
+                timeline_counts[str(bucket)[11:16] + ":00"] = int(count or 0)
+
     timeline: list[TimelinePoint] = []
     for i in range(24):
-        hour_start = now - timedelta(hours=23 - i)
-        hour_end = hour_start + timedelta(hours=1)
-        count = db.query(func.count(Event.id)).filter(
-            Event.timestamp >= hour_start,
-            Event.timestamp < hour_end,
-        ).scalar() or 0
+        hour_start = window_start + timedelta(hours=i)
+        label = hour_start.strftime("%H:00")
         timeline.append(TimelinePoint(
-            hour=hour_start.strftime("%H:00"),
-            count=count,
+            hour=label,
+            count=timeline_counts.get(label, 0),
         ))
 
     return {
