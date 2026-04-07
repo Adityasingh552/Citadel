@@ -1,9 +1,12 @@
 /** Citadel API client — Fetch wrapper for /api/* endpoints with JWT auth. */
 
+declare const __API_URL__: string;
+
 const TOKEN_KEY = 'citadel_token';
 
 class ApiClient {
-    private baseUrl = '/api';
+    // Use environment-injected URL in production, fallback to relative /api for dev
+    private baseUrl = __API_URL__ ? `${__API_URL__}/api` : '/api';
 
     /** Get the stored JWT token. */
     getToken(): string | null {
