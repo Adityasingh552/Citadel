@@ -185,30 +185,16 @@ class StreamCapture:
         return True
 
     def _start_ffmpeg_process(self) -> tuple[Optional[subprocess.Popen], str]:
-        """Start ffmpeg with compatibility fallbacks for older versions."""
-        attempts = [
-            ("fps_mode", ["-fps_mode", "vfr"]),
-            ("vsync", ["-vsync", "vfr"]),
-            ("plain", []),
-        ]
+        """Start ffmpeg for persistent stream capture.
 
-        for mode, mode_args in attempts:
-            process, start_error = self._spawn_ffmpeg(mode_args)
-            if process:
-                if mode != "fps_mode":
-                    logger.info("StreamCapture: using ffmpeg compatibility mode '%s'", mode)
-                return process, ""
-
-            if mode == "fps_mode" and self._is_unknown_option_error(start_error, "fps_mode"):
-                logger.info("StreamCapture: ffmpeg does not support -fps_mode, falling back to -vsync")
-                continue
-            if mode == "vsync" and self._is_unknown_option_error(start_error, "vsync"):
-                logger.info("StreamCapture: ffmpeg does not support -vsync, falling back to plain mode")
-                continue
-
-            return None, start_error
-
-        return None, "ffmpeg exited immediately in all compatibility modes"
+        We intentionally avoid ``-fps_mode`` here because older ffmpeg builds
+        (including common Ubuntu 22.04 packages) may not support it and exit
+        immediately with "Unrecognized option 'fps_mode'".
+        """
+        process, start_error = self._spawn_ffmpeg([])
+        if process:
+            return process, ""
+        return None, start_error
 
     def _spawn_ffmpeg(self, mode_args: list[str]) -> tuple[Optional[subprocess.Popen], str]:
         """Spawn ffmpeg once and verify it did not exit immediately."""
@@ -249,16 +235,6 @@ class StreamCapture:
             return None, stderr_text[:2000]
 
         return process, ""
-
-    @staticmethod
-    def _is_unknown_option_error(stderr_text: str, option_name: str) -> bool:
-        text = stderr_text.lower()
-        option = option_name.lower()
-        return (
-            f"unrecognized option '{option}'" in text
-            or f"option {option} not found" in text
-            or f"unknown option '{option}'" in text
-        )
 
     def _read_stderr_snippet(self, max_chars: int = 500) -> str:
         if not self._process or not self._process.stderr:

@@ -11,18 +11,16 @@ def test_start_ffmpeg_process_falls_back_from_fps_mode_to_vsync():
 
     def fake_spawn(mode_args: list[str]):
         calls.append(mode_args)
-        if mode_args == ["-fps_mode", "vfr"]:
-            return None, "Unrecognized option 'fps_mode'"
-        if mode_args == ["-vsync", "vfr"]:
+        if mode_args == []:
             return ok_process, ""
-        return None, "should not reach plain fallback"
+        return None, "should not pass extra ffmpeg mode args"
 
     capture._spawn_ffmpeg = fake_spawn  # type: ignore[method-assign]
 
     process, err = capture._start_ffmpeg_process()
     assert process is ok_process
     assert err == ""
-    assert calls == [["-fps_mode", "vfr"], ["-vsync", "vfr"]]
+    assert calls == [[]]
 
 
 def test_start_ffmpeg_process_does_not_fallback_for_non_option_error():
@@ -38,7 +36,7 @@ def test_start_ffmpeg_process_does_not_fallback_for_non_option_error():
     process, err = capture._start_ffmpeg_process()
     assert process is None
     assert err == "Network timeout while opening input"
-    assert calls == [["-fps_mode", "vfr"]]
+    assert calls == [[]]
 
 
 def test_start_respects_reset_retry_state_flag(monkeypatch):
