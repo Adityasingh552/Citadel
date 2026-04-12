@@ -613,7 +613,7 @@ class MonitorService:
                 capture._retry_count += 1
                 capture._backoff = min(capture._backoff * 2, STREAM_MAX_BACKOFF)
 
-                if capture.start():
+                if capture.start(reset_retry_state=False):
                     logger.info("Stream capture restarted successfully for %s", camera.location_name)
                     status.error = None
                     # Give ffmpeg a moment to buffer the first frame

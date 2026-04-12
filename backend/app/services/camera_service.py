@@ -144,8 +144,13 @@ class StreamCapture:
     def error(self) -> Optional[str]:
         return self._error
 
-    def start(self) -> bool:
-        """Start the ffmpeg process and reader thread. Returns True on success."""
+    def start(self, reset_retry_state: bool = True) -> bool:
+        """Start ffmpeg + reader thread. Returns True on success.
+
+        Args:
+            reset_retry_state: Reset retry/backoff counters (True for first start,
+                False when restarting after a failed stream capture).
+        """
         if self._started:
             return self.is_alive
 
@@ -154,37 +159,20 @@ class StreamCapture:
             logger.warning("StreamCapture: ffmpeg is not installed")
             return False
 
-        try:
-            # ffmpeg outputs a continuous stream of JPEG frames.
-            # -re is NOT used so ffmpeg reads as fast as the stream provides.
-            # -fps_mode vfr keeps variable frame rate output.
-            # Each JPEG is delimited by SOI (FFD8) and EOI (FFD9) markers.
-            self._process = subprocess.Popen(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-loglevel", "error",
-                    "-i", self._stream_url,
-                    "-f", "image2pipe",
-                    "-vcodec", "mjpeg",
-                    "-q:v", "5",          # quality (2=best, 31=worst); 5 is good for analysis
-                    "-fps_mode", "vfr",
-                    "pipe:1",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=10 * 1024 * 1024,  # 10MB buffer
-            )
-        except Exception as e:
-            self._error = f"Failed to start ffmpeg: {e}"
-            logger.error("StreamCapture: failed to start ffmpeg: %s", e)
+        process, start_error = self._start_ffmpeg_process()
+        if not process:
+            self._error = f"Failed to start ffmpeg: {start_error}"
+            logger.error("StreamCapture: failed to start ffmpeg: %s", start_error)
             return False
+
+        self._process = process
 
         self._stop_event.clear()
         self._started = True
         self._error = None
-        self._retry_count = 0
-        self._backoff = STREAM_BACKOFF_INITIAL
+        if reset_retry_state:
+            self._retry_count = 0
+            self._backoff = STREAM_BACKOFF_INITIAL
 
         self._reader_thread = threading.Thread(
             target=self._reader_loop,
@@ -195,6 +183,93 @@ class StreamCapture:
 
         logger.info("StreamCapture: started persistent ffmpeg for %s", self._stream_url)
         return True
+
+    def _start_ffmpeg_process(self) -> tuple[Optional[subprocess.Popen], str]:
+        """Start ffmpeg with compatibility fallbacks for older versions."""
+        attempts = [
+            ("fps_mode", ["-fps_mode", "vfr"]),
+            ("vsync", ["-vsync", "vfr"]),
+            ("plain", []),
+        ]
+
+        for mode, mode_args in attempts:
+            process, start_error = self._spawn_ffmpeg(mode_args)
+            if process:
+                if mode != "fps_mode":
+                    logger.info("StreamCapture: using ffmpeg compatibility mode '%s'", mode)
+                return process, ""
+
+            if mode == "fps_mode" and self._is_unknown_option_error(start_error, "fps_mode"):
+                logger.info("StreamCapture: ffmpeg does not support -fps_mode, falling back to -vsync")
+                continue
+            if mode == "vsync" and self._is_unknown_option_error(start_error, "vsync"):
+                logger.info("StreamCapture: ffmpeg does not support -vsync, falling back to plain mode")
+                continue
+
+            return None, start_error
+
+        return None, "ffmpeg exited immediately in all compatibility modes"
+
+    def _spawn_ffmpeg(self, mode_args: list[str]) -> tuple[Optional[subprocess.Popen], str]:
+        """Spawn ffmpeg once and verify it did not exit immediately."""
+        try:
+            cmd = [
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-loglevel", "error",
+                "-i", self._stream_url,
+                "-f", "image2pipe",
+                "-vcodec", "mjpeg",
+                "-q:v", "5",  # quality (2=best, 31=worst); 5 is good for analysis
+                *mode_args,
+                "pipe:1",
+            ]
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=10 * 1024 * 1024,  # 10MB buffer
+            )
+        except Exception as e:
+            return None, str(e)
+
+        # Invalid ffmpeg options fail immediately; detect that and surface stderr.
+        time.sleep(0.2)
+        if process.poll() is not None:
+            stderr_bytes = b""
+            if process.stderr:
+                try:
+                    stderr_bytes = process.stderr.read() or b""
+                except Exception:
+                    stderr_bytes = b""
+            stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+            if not stderr_text:
+                stderr_text = f"ffmpeg exited immediately (rc={process.returncode})"
+            return None, stderr_text[:2000]
+
+        return process, ""
+
+    @staticmethod
+    def _is_unknown_option_error(stderr_text: str, option_name: str) -> bool:
+        text = stderr_text.lower()
+        option = option_name.lower()
+        return (
+            f"unrecognized option '{option}'" in text
+            or f"option {option} not found" in text
+            or f"unknown option '{option}'" in text
+        )
+
+    def _read_stderr_snippet(self, max_chars: int = 500) -> str:
+        if not self._process or not self._process.stderr:
+            return ""
+        try:
+            data = self._process.stderr.read() or b""
+        except Exception:
+            return ""
+        if not data:
+            return ""
+        return data.decode("utf-8", errors="replace").strip()[:max_chars]
 
     def stop(self) -> None:
         """Stop the ffmpeg process and reader thread."""
@@ -250,8 +325,17 @@ class StreamCapture:
                 if not chunk:
                     # ffmpeg closed stdout — process probably died
                     if not self._stop_event.is_set():
-                        self._error = "ffmpeg process ended unexpectedly"
-                        logger.warning("StreamCapture: ffmpeg stdout closed unexpectedly")
+                        rc = self._process.poll() if self._process else None
+                        stderr_snippet = self._read_stderr_snippet()
+                        self._error = f"ffmpeg process ended unexpectedly (rc={rc})"
+                        if stderr_snippet:
+                            logger.warning(
+                                "StreamCapture: ffmpeg stdout closed unexpectedly (rc=%s): %s",
+                                rc,
+                                stderr_snippet,
+                            )
+                        else:
+                            logger.warning("StreamCapture: ffmpeg stdout closed unexpectedly (rc=%s)", rc)
                     break
 
                 buf.extend(chunk)
