@@ -1011,9 +1011,7 @@ function updateMonitorUI(status: MonitorStatus): void {
     // Update stats
     const statsEl = document.getElementById('monitor-stats');
     if (statsEl) {
-        const duration = status.started_at
-            ? getTimeSince(status.started_at)
-            : '—';
+        const duration = formatDuration(status);
 
         statsEl.innerHTML = `
             <div class="monitor-stat">
@@ -1144,6 +1142,23 @@ function getTimeSince(isoDate: string): string {
     const start = new Date(isoDate).getTime();
     const now = Date.now();
     const diff = Math.floor((now - start) / 1000);
+
+    if (diff < 60) return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    return `${h}h ${m}m`;
+}
+
+function formatDuration(status: MonitorStatus): string {
+    if (!status.started_at) return '—';
+
+    const start = new Date(status.started_at).getTime();
+    const end = !status.active
+        ? new Date(status.stopped_at ?? status.last_frame_time ?? status.started_at).getTime()
+        : Date.now();
+    const safeEnd = Number.isFinite(end) ? end : Date.now();
+    const diff = Math.max(0, Math.floor((safeEnd - start) / 1000));
 
     if (diff < 60) return `${diff}s`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;

@@ -37,6 +37,7 @@ class MonitorStatus:
     camera_name: str = ""
     camera_location: str = ""
     started_at: Optional[str] = None
+    stopped_at: Optional[str] = None
     frames_analyzed: int = 0
     detections_found: int = 0
     accidents_found: int = 0
@@ -57,6 +58,7 @@ class MonitorStatus:
             "camera_name": self.camera_name,
             "camera_location": self.camera_location,
             "started_at": self.started_at,
+            "stopped_at": self.stopped_at,
             "frames_analyzed": self.frames_analyzed,
             "detections_found": self.detections_found,
             "accidents_found": self.accidents_found,
@@ -221,6 +223,7 @@ class MonitorService:
 
         with self._lock:
             monitor.status.active = False
+            monitor.status.stopped_at = datetime.now(timezone.utc).isoformat()
 
         # Remove from DB (skip during shutdown so we can restore on next boot)
         if persist:

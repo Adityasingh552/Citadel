@@ -254,7 +254,7 @@ function renderMonitorList(data: MonitorStatusResponse): void {
 }
 
 function renderCameraCard(m: MonitorStatus): string {
-    const duration = m.started_at ? getTimeSince(m.started_at) : '--';
+    const duration = formatDuration(m);
     const statusClass = m.active ? 'cameras-card--active' : 'cameras-card--stopped';
     let statusLabel = m.active ? 'Active' : 'Stopped';
     let statusBadge = m.active ? 'badge--success' : 'badge--muted';
@@ -703,7 +703,7 @@ function renderDetailStats(m: MonitorStatus): void {
     const el = document.getElementById('camdetail-stats');
     if (!el) return;
 
-    const duration = m.started_at ? getTimeSince(m.started_at) : '--';
+    const duration = formatDuration(m);
 
     el.innerHTML = `
         <div class="camdetail__stat">
@@ -966,6 +966,23 @@ function getTimeSince(isoDate: string): string {
     const start = new Date(isoDate).getTime();
     const now = Date.now();
     const diff = Math.floor((now - start) / 1000);
+
+    if (diff < 60) return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    return `${h}h ${m}m`;
+}
+
+function formatDuration(status: MonitorStatus): string {
+    if (!status.started_at) return '--';
+
+    const start = new Date(status.started_at).getTime();
+    const end = !status.active
+        ? new Date(status.stopped_at ?? status.last_frame_time ?? status.started_at).getTime()
+        : Date.now();
+    const safeEnd = Number.isFinite(end) ? end : Date.now();
+    const diff = Math.max(0, Math.floor((safeEnd - start) / 1000));
 
     if (diff < 60) return `${diff}s`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;

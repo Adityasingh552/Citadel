@@ -191,6 +191,7 @@ export interface MonitorStatus {
     camera_name: string;
     camera_location: string;
     started_at: string | null;
+    stopped_at?: string | null;
     frames_analyzed: number;
     detections_found: number;
     accidents_found: number;
