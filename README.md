@@ -1,6 +1,6 @@
 # Citadel
 
-AI-powered traffic safety analytics platform for accident detection from uploaded media and live DOT camera networks.
+**Citadel** is an AI-powered traffic safety analytics platform designed for real-time accident detection from uploaded media and live Department of Transportation (DOT) camera networks.
 
 ## What It Does
 
@@ -204,4 +204,4 @@ npm run build
 
 ## License
 
-Educational and research use.
+This project is intended for educational and research purposes only.
