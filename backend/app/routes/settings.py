@@ -3,16 +3,17 @@
 import json
 import logging
 import os
-import shutil
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
 
 from app.auth import get_current_admin
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models import Event, Ticket
 from app.schemas import SettingsOut, SettingsUpdate
 from app.storage import get_storage_service
@@ -23,24 +24,142 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # Persist runtime settings to a JSON file so they survive server restarts
 _SETTINGS_FILE = Path(__file__).resolve().parent.parent.parent / "runtime_settings.json"
+_SETTINGS_ROW_ID = 1
+_SETTINGS_TABLE_READY = False
+_SETTINGS_TABLE_LOCK = threading.Lock()
 
 
-def _load_overrides() -> dict:
-    """Load persisted runtime overrides from disk."""
+def _load_overrides_from_disk() -> dict:
+    """Load persisted runtime overrides from local JSON fallback."""
     try:
         if _SETTINGS_FILE.exists():
             return json.loads(_SETTINGS_FILE.read_text())
     except (json.JSONDecodeError, OSError) as e:
-        logger.warning("Failed to load runtime settings: %s", e)
+        logger.warning("Failed to load runtime settings file: %s", e)
+    return {}
+
+
+def _save_overrides_to_disk(overrides: dict) -> None:
+    """Persist runtime overrides to local JSON fallback."""
+    try:
+        _SETTINGS_FILE.write_text(json.dumps(overrides, indent=2))
+    except OSError as e:
+        logger.error("Failed to save runtime settings file: %s", e)
+
+
+def _ensure_settings_table() -> None:
+    """Ensure runtime settings table exists for persistence in DB."""
+    global _SETTINGS_TABLE_READY
+    if _SETTINGS_TABLE_READY:
+        return
+
+    with _SETTINGS_TABLE_LOCK:
+        if _SETTINGS_TABLE_READY:
+            return
+
+        with SessionLocal() as db:
+            dialect = db.bind.dialect.name if db.bind else ""
+            if dialect == "postgresql":
+                db.execute(text("""
+                    CREATE TABLE IF NOT EXISTS runtime_settings (
+                        id INTEGER PRIMARY KEY,
+                        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """))
+                db.execute(
+                    text(
+                        """
+                        INSERT INTO runtime_settings (id, data)
+                        VALUES (:id, '{}'::jsonb)
+                        ON CONFLICT (id) DO NOTHING
+                        """
+                    ),
+                    {"id": _SETTINGS_ROW_ID},
+                )
+            else:
+                db.execute(text("""
+                    CREATE TABLE IF NOT EXISTS runtime_settings (
+                        id INTEGER PRIMARY KEY,
+                        data TEXT NOT NULL DEFAULT '{}',
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                db.execute(
+                    text(
+                        """
+                        INSERT OR IGNORE INTO runtime_settings (id, data)
+                        VALUES (:id, '{}')
+                        """
+                    ),
+                    {"id": _SETTINGS_ROW_ID},
+                )
+            db.commit()
+
+        _SETTINGS_TABLE_READY = True
+
+
+def _load_overrides() -> dict:
+    """Load persisted runtime overrides from database, fallback to disk."""
+    try:
+        _ensure_settings_table()
+        with SessionLocal() as db:
+            row = db.execute(
+                text("SELECT data FROM runtime_settings WHERE id = :id"),
+                {"id": _SETTINGS_ROW_ID},
+            ).first()
+
+        if row is not None and row[0] is not None:
+            if isinstance(row[0], dict):
+                return row[0]
+            if isinstance(row[0], str):
+                return json.loads(row[0])
+    except Exception as e:
+        logger.warning("Failed to load runtime settings from database: %s", e)
+
+    disk_overrides = _load_overrides_from_disk()
+    if disk_overrides:
+        _save_overrides(disk_overrides)
+        return disk_overrides
+
     return {}
 
 
 def _save_overrides(overrides: dict) -> None:
-    """Persist runtime overrides to disk."""
+    """Persist runtime overrides to database and local fallback file."""
     try:
-        _SETTINGS_FILE.write_text(json.dumps(overrides, indent=2))
-    except OSError as e:
-        logger.error("Failed to save runtime settings: %s", e)
+        _ensure_settings_table()
+        payload = json.dumps(overrides)
+
+        with SessionLocal() as db:
+            dialect = db.bind.dialect.name if db.bind else ""
+            if dialect == "postgresql":
+                db.execute(
+                    text(
+                        """
+                        UPDATE runtime_settings
+                        SET data = CAST(:payload AS JSONB), updated_at = NOW()
+                        WHERE id = :id
+                        """
+                    ),
+                    {"payload": payload, "id": _SETTINGS_ROW_ID},
+                )
+            else:
+                db.execute(
+                    text(
+                        """
+                        UPDATE runtime_settings
+                        SET data = :payload, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = :id
+                        """
+                    ),
+                    {"payload": payload, "id": _SETTINGS_ROW_ID},
+                )
+            db.commit()
+    except Exception as e:
+        logger.error("Failed to save runtime settings to database: %s", e)
+
+    _save_overrides_to_disk(overrides)
 
 
 def get_runtime_settings() -> dict:
@@ -196,4 +315,3 @@ async def delete_all_data(db: Session = Depends(get_db), _admin: str = Depends(g
             "upload_files": uploads_cleared,
         }
     }
-
